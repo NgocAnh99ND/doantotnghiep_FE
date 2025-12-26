@@ -1,8 +1,9 @@
-// src/app/(auth)/login.tsx
 import { Ionicons } from "@expo/vector-icons";
-import { Link, useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,326 +14,184 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type LoginMethod = "phone" | "email";
+const STORAGE_KEYS = {
+  PHONE_E164: "auth_phone_e164",
+};
 
-function cn(...classes: Array<string | false | undefined | null>) {
+function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-function AuthInput(props: {
-  label: string;
-  placeholder?: string;
-  value: string;
-  onChangeText: (t: string) => void;
-  keyboardType?: "default" | "email-address" | "phone-pad";
-  secureTextEntry?: boolean;
-  leftIcon?: React.ComponentProps<typeof Ionicons>["name"];
-  right?: React.ReactNode;
-  autoCapitalize?: "none" | "sentences" | "words" | "characters";
-  textContentType?: any;
-}) {
-  const {
-    label,
-    placeholder,
-    value,
-    onChangeText,
-    keyboardType = "default",
-    secureTextEntry,
-    leftIcon,
-    right,
-    autoCapitalize = "none",
-    textContentType,
-  } = props;
-
-  return (
-    <View className="mb-4">
-      <Text className="mb-2 text-sm font-semibold text-neutral-800 dark:text-neutral-200">
-        {label}
-      </Text>
-
-      <View className="flex-row items-center rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
-        {leftIcon ? (
-          <View className="mr-3">
-            <Ionicons
-              name={leftIcon}
-              size={18}
-              color={Platform.OS === "android" ? "#6B7280" : "#6B7280"}
-            />
-          </View>
-        ) : null}
-
-        <TextInput
-          className="flex-1 text-base text-neutral-900 dark:text-neutral-100"
-          placeholder={placeholder}
-          placeholderTextColor="#9CA3AF"
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType={keyboardType}
-          secureTextEntry={secureTextEntry}
-          autoCapitalize={autoCapitalize}
-          autoCorrect={false}
-          textContentType={textContentType}
-        />
-
-        {right ? <View className="ml-2">{right}</View> : null}
-      </View>
-    </View>
-  );
+function maskPhone(phoneE164: string) {
+  const digits = phoneE164.replace(/\D/g, "");
+  if (digits.length < 6) return phoneE164;
+  const last3 = digits.slice(-3);
+  const prefix = phoneE164.startsWith("+84") ? "+84" : phoneE164.slice(0, 3);
+  return `${prefix} ••• ••• ${last3}`;
 }
 
-export default function LoginScreen() {
+export default function Login() {
   const router = useRouter();
 
-  const [method, setMethod] = useState<LoginMethod>("phone");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [booting, setBooting] = useState(true);
+  const [savedPhoneE164, setSavedPhoneE164] = useState<string | null>(null);
+
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
-  const [remember, setRemember] = useState(true);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const p = await AsyncStorage.getItem(STORAGE_KEYS.PHONE_E164);
+        if (!p) {
+          // ✅ Lần đầu vào app → chuyển sang register (đúng yêu cầu)
+          router.replace("/(auth)/register");
+          return;
+        }
+        setSavedPhoneE164(p);
+      } finally {
+        setBooting(false);
+      }
+    })();
+  }, [router]);
 
   const canSubmit = useMemo(() => {
-    const idOk =
-      method === "phone" ? phone.trim().length >= 9 : email.trim().includes("@");
-    return idOk && password.trim().length >= 6;
-  }, [method, phone, email, password]);
+    if (booting || submitting) return false;
+    if (!savedPhoneE164) return false;
+    return password.trim().length >= 6;
+  }, [booting, submitting, savedPhoneE164, password]);
 
-  const handleLogin = () => {
-    // UI-only: sau này bạn thay bằng gọi API + lưu token
-    router.replace("/(tabs)/home");
+  const onPressContinue = async () => {
+    if (!canSubmit) return;
+
+    setErrorText(null);
+    setSubmitting(true);
+    try {
+      // TODO: gọi API login của bạn tại đây
+      // await authService.login({ phone: savedPhoneE164!, password })
+
+      router.replace("/(tabs)/home");
+    } catch (e: any) {
+      setErrorText(e?.message ?? "Mật khẩu không đúng hoặc có lỗi xảy ra.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
+  const onChangePhone = async () => {
+    await AsyncStorage.removeItem(STORAGE_KEYS.PHONE_E164);
+    setSavedPhoneE164(null);
+    setPassword("");
+    setErrorText(null);
+    router.replace("/(auth)/register");
+  };
+
+  if (booting) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-slate-900">
+        <ActivityIndicator />
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView className="flex-1 bg-neutral-50 dark:bg-neutral-950">
+    <SafeAreaView className="flex-1 bg-slate-900">
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
-          {/* ✅ Cách 2: bọc View bên trong để dùng className thay contentContainerClassName */}
-          <View className="px-5 pb-10">
-            {/* Header */}
-            <View className="mt-4">
-              <View className="flex-row items-center">
-                <View className="h-12 w-12 items-center justify-center rounded-2xl bg-neutral-900 dark:bg-neutral-100">
-                  <Ionicons
-                    name="car-sport"
-                    size={22}
-                    color={Platform.OS === "android" ? "#fff" : "#fff"}
-                  />
-                </View>
+        <ScrollView keyboardShouldPersistTaps="handled" className="flex-1">
+          <View className="px-5 pt-10 pb-28">
+            <View className="items-center">
+              <Text className="text-5xl font-extrabold text-white">
+                tiện chuyến
+              </Text>
+              <Text className="mt-4 text-base text-slate-200">
+                Những lần sau chỉ cần nhập mật khẩu
+              </Text>
+            </View>
 
-                <View className="ml-3">
-                  <Text className="text-xl font-extrabold text-neutral-900 dark:text-neutral-100">
-                    Tiện Chuyến
-                  </Text>
-                  <Text className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
-                    Đi chung • Tiết kiệm • An toàn
-                  </Text>
-                </View>
+            {/* Hiển thị số đã lưu + đổi số */}
+            <View className="mt-8 flex-row items-center justify-between rounded-2xl border border-slate-700 bg-slate-800/60 px-4 py-4">
+              <View>
+                <Text className="text-xs text-slate-300">Số điện thoại</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-100">
+                  {savedPhoneE164 ? maskPhone(savedPhoneE164) : ""}
+                </Text>
               </View>
 
-              <Text className="mt-6 text-2xl font-extrabold text-red-900 dark:text-neutral-100">
-                Đăng nhập
-              </Text>
-              <Text className="mt-2 text-base text-red-600 dark:text-neutral-400">
-                Chào mừng bạn quay lại. Hãy đăng nhập để tiếp tục.
-              </Text>
-            </View>
-
-            {/* Switch method */}
-            <View className="mt-6 flex-row rounded-2xl bg-neutral-100 p-1 dark:bg-neutral-900">
               <Pressable
-                onPress={() => setMethod("phone")}
-                className={cn(
-                  "flex-1 items-center rounded-2xl py-3",
-                  method === "phone" && "bg-white shadow-sm dark:bg-neutral-950"
-                )}
+                onPress={onChangePhone}
+                className="rounded-xl px-3 py-2"
               >
-                <Text
-                  className={cn(
-                    "text-sm font-semibold",
-                    method === "phone"
-                      ? "text-neutral-900 dark:text-neutral-100"
-                      : "text-neutral-500 dark:text-neutral-400"
-                  )}
-                >
-                  Số điện thoại
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => setMethod("email")}
-                className={cn(
-                  "flex-1 items-center rounded-2xl py-3",
-                  method === "email" && "bg-white shadow-sm dark:bg-neutral-950"
-                )}
-              >
-                <Text
-                  className={cn(
-                    "text-sm font-semibold",
-                    method === "email"
-                      ? "text-neutral-900 dark:text-neutral-100"
-                      : "text-neutral-500 dark:text-neutral-400"
-                  )}
-                >
-                  Email
+                <Text className="text-sm font-semibold text-sky-300">
+                  Đổi số
                 </Text>
               </Pressable>
             </View>
 
-            {/* Inputs */}
-            <View className="mt-6">
-              {method === "phone" ? (
-                <AuthInput
-                  label="Số điện thoại"
-                  placeholder="Ví dụ: 0912345678"
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                  leftIcon="call-outline"
-                  autoCapitalize="none"
-                  textContentType="telephoneNumber"
+            {/* Password */}
+            <View className="mt-5">
+              <Text className="mb-2 text-sm text-slate-300">Mật khẩu</Text>
+              <View className="flex-row items-center rounded-2xl border border-slate-700 bg-slate-800/60 px-4 py-4">
+                <TextInput
+                  className="flex-1 text-base text-white"
+                  placeholder="Nhập mật khẩu"
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry={!showPw}
+                  value={password}
+                  onChangeText={setPassword}
                 />
-              ) : (
-                <AuthInput
-                  label="Email"
-                  placeholder="Ví dụ: ban@domain.com"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  leftIcon="mail-outline"
-                  autoCapitalize="none"
-                  textContentType="emailAddress"
-                />
-              )}
-
-              <AuthInput
-                label="Mật khẩu"
-                placeholder="Nhập mật khẩu"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPw}
-                leftIcon="lock-closed-outline"
-                autoCapitalize="none"
-                textContentType="password"
-                right={
-                  <Pressable
-                    onPress={() => setShowPw((s) => !s)}
-                    className="rounded-xl px-2 py-1"
-                  >
-                    <Ionicons
-                      name={showPw ? "eye-off-outline" : "eye-outline"}
-                      size={18}
-                      color="#6B7280"
-                    />
-                  </Pressable>
-                }
-              />
-
-              <View className="mb-2 flex-row items-center justify-between">
                 <Pressable
-                  onPress={() => setRemember((v) => !v)}
-                  className="flex-row items-center"
+                  onPress={() => setShowPw((s) => !s)}
+                  className="ml-2 rounded-xl px-2 py-1"
                 >
-                  <View
-                    className={cn(
-                      "h-5 w-5 items-center justify-center rounded-md border",
-                      remember
-                        ? "border-neutral-900 bg-neutral-900 dark:border-neutral-100 dark:bg-neutral-100"
-                        : "border-neutral-300 bg-white dark:border-neutral-700 dark:bg-neutral-950"
-                    )}
-                  >
-                    {remember ? (
-                      <Ionicons
-                        name="checkmark"
-                        size={14}
-                        color={remember ? "#fff" : "#000"}
-                      />
-                    ) : null}
-                  </View>
-                  <Text className="ml-2 text-sm text-neutral-700 dark:text-neutral-300">
-                    Ghi nhớ đăng nhập
-                  </Text>
-                </Pressable>
-
-                <Pressable onPress={() => {}} className="rounded-xl px-2 py-1">
-                  <Text className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                    Quên mật khẩu?
-                  </Text>
+                  <Ionicons
+                    name={showPw ? "eye-off-outline" : "eye-outline"}
+                    size={18}
+                    color="#94A3B8"
+                  />
                 </Pressable>
               </View>
-
-              {/* Login button */}
-              <Pressable
-                onPress={handleLogin}
-                disabled={!canSubmit}
-                className={cn(
-                  "mt-4 items-center rounded-2xl py-4",
-                  canSubmit
-                    ? "bg-neutral-900 dark:bg-neutral-100"
-                    : "bg-neutral-300 dark:bg-neutral-800"
-                )}
-              >
-                <Text
-                  className={cn(
-                    "text-base font-bold",
-                    canSubmit
-                      ? "text-white dark:text-neutral-900"
-                      : "text-neutral-600 dark:text-neutral-400"
-                  )}
-                >
-                  Đăng nhập
-                </Text>
-              </Pressable>
-
-              {/* Divider */}
-              <View className="my-6 flex-row items-center">
-                <View className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
-                <Text className="mx-3 text-sm text-neutral-500 dark:text-neutral-400">
-                  hoặc
-                </Text>
-                <View className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
-              </View>
-
-              {/* Social buttons (UI only) */}
-              <View className="flex-row gap-3">
-                <Pressable className="flex-1 flex-row items-center justify-center rounded-2xl border border-neutral-200 bg-white py-3 dark:border-neutral-800 dark:bg-neutral-950">
-                  <Ionicons name="logo-google" size={18} color="#111827" />
-                  <Text className="ml-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                    Google
-                  </Text>
-                </Pressable>
-
-                <Pressable className="flex-1 flex-row items-center justify-center rounded-2xl border border-neutral-200 bg-white py-3 dark:border-neutral-800 dark:bg-neutral-950">
-                  <Ionicons name="logo-apple" size={18} color="#111827" />
-                  <Text className="ml-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                    Apple
-                  </Text>
-                </Pressable>
-              </View>
-
-              {/* Register */}
-              <View className="mt-8 flex-row items-center justify-center">
-                <Text className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Chưa có tài khoản?
-                </Text>
-                <Link href="/(auth)/register" asChild>
-                  <Pressable className="ml-2 rounded-xl px-2 py-1">
-                    <Text className="text-sm font-extrabold text-neutral-900 dark:text-neutral-100">
-                      Đăng ký
-                    </Text>
-                  </Pressable>
-                </Link>
-              </View>
-
-              {/* Terms */}
-              <Text className="mt-6 text-center text-xs text-neutral-500 dark:text-neutral-500">
-                Bằng việc đăng nhập, bạn đồng ý với Điều khoản & Chính sách của
-                Tiện Chuyến.
-              </Text>
             </View>
+
+            {errorText ? (
+              <Text className="mt-4 text-sm text-red-300">{errorText}</Text>
+            ) : null}
+
+            <Pressable
+              onPress={() => {}}
+              className="mt-4 self-end rounded-xl px-2 py-2"
+            >
+              <Text className="text-sm font-semibold text-sky-300 underline">
+                Quên mật khẩu?
+              </Text>
+            </Pressable>
           </View>
         </ScrollView>
+
+        {/* Bottom button */}
+        <View className="absolute bottom-0 left-0 right-0 px-5 pb-6">
+          <Pressable
+            onPress={onPressContinue}
+            disabled={!canSubmit}
+            className={cn(
+              "items-center justify-center rounded-3xl py-5",
+              canSubmit ? "bg-yellow-400" : "bg-yellow-400/40"
+            )}
+          >
+            {submitting ? (
+              <ActivityIndicator />
+            ) : (
+              <Text className="text-lg font-semibold text-slate-900">
+                Tiếp tục
+              </Text>
+            )}
+          </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
