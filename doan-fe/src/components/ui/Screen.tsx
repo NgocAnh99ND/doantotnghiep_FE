@@ -1,19 +1,16 @@
 import React from "react";
+import { StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ScrollView, View, StyleSheet, ViewProps } from "react-native";
-import { theme } from "../../styles/theme";
 
-export default function Screen({ children, style, scroll }: React.PropsWithChildren<{ style?: ViewProps["style"]; scroll?: boolean }>) {
-  const content = <View style={[styles.container, style]}>{children}</View>;
+export default function Screen({ children }: { children: React.ReactNode }) {
   return (
     <SafeAreaView style={styles.safe}>
-      {scroll ? <ScrollView contentContainerStyle={styles.scroll}>{content}</ScrollView> : content}
+      <View style={styles.container}>{children}</View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.colors.bg },
-  scroll: { flexGrow: 1 },
-  container: { flex: 1, padding: theme.spacing.md, gap: theme.spacing.md },
+  safe: { flex: 1 },
+  container: { flex: 1, padding: 16 },
 });

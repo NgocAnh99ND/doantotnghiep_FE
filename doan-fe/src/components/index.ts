@@ -4,3 +4,5 @@ export { default as AppInput } from "./ui/AppInput";
 export { default as AppButton } from "./ui/AppButton";
 export { default as Loading } from "./ui/Loading";
 export { default as ErrorState } from "./shared/ErrorState";
+export { default as Divider } from "./ui/Divider";
+

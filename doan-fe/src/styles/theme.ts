@@ -10,6 +10,7 @@ export const theme = {
     primary: "#111827",
     primaryText: "#FFFFFF",
     disabled: "#D1D5DB",
+    muted: "#f3f4f6",
   },
   radius: {
     xl: 16,
