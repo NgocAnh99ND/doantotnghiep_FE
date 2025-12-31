@@ -1,5 +1,5 @@
 import { getJson, postJson, putJson } from "@/libs/http";
-import type { ChangeRouteStatusBody, CreateRouteBody, RouteDTO, RoutesResponse, UpdateRouteBody } from "./types";
+import type { ChangeRouteStatusBody, ChangeRouteStatusResponse, CreateRouteBody, CreateRouteResponse, RouteDetailResponse, RouteDTO, RoutesResponse, UpdateRouteBody, UpdateRouteResponse } from "./types";
 
 // Endpoint thật đúng BE :contentReference[oaicite:9]{index=9} :contentReference[oaicite:10]{index=10}
 const ENDPOINT = {
@@ -20,22 +20,28 @@ export const routeApi = {
     // GET /api/route/detail?route_id=123 :contentReference[oaicite:12]{index=12}
     async fetchDetail(route_id: number): Promise<RouteDTO> {
         const url = `${ENDPOINT.detail}?route_id=${encodeURIComponent(String(route_id))}`;
-        const res = await getJson<unknown>(url);
-        return res as RouteDTO;
+        const res = await getJson<RouteDetailResponse>(url);
+        return res?.data ?? null;
     },
 
-    // POST /api/route/create body: driver_id,start_location,end_location,time,seats,price :contentReference[oaicite:13]{index=13}
-    async create(body: CreateRouteBody): Promise<unknown> {
-        return await postJson<unknown>(ENDPOINT.create, body);
+    // POST /api/route/create
+    async create(body: CreateRouteBody): Promise<RouteDTO | null> {
+        const res = await postJson<CreateRouteResponse>(ENDPOINT.create, body);
+        return res?.data ?? null;
     },
 
-    // PUT /api/route/update body: route_id,... :contentReference[oaicite:14]{index=14}
-    async update(body: UpdateRouteBody): Promise<unknown> {
-        return await putJson<unknown>(ENDPOINT.update, body);
+    // PUT /api/route/update
+    async update(body: UpdateRouteBody): Promise<RouteDTO | null> {
+        const res = await putJson<UpdateRouteResponse>(ENDPOINT.update, body);
+        return res?.data ?? null;
     },
 
-    // PUT /api/route/change-status body: route_id,route_status :contentReference[oaicite:15]{index=15}
-    async changeStatus(body: ChangeRouteStatusBody): Promise<unknown> {
-        return await putJson<unknown>(ENDPOINT.changeStatus, body);
+    // PUT /api/route/change-status
+    async changeStatus(body: ChangeRouteStatusBody): Promise<RouteDTO | null> {
+        const res = await putJson<ChangeRouteStatusResponse>(
+            ENDPOINT.changeStatus,
+            body
+        );
+        return res?.data ?? null;
     },
 };

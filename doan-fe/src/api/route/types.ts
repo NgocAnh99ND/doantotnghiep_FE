@@ -44,3 +44,23 @@ export type RoutesResponse = {
   total: number;
   data: RouteDTO[];
 };
+
+export type RouteDetailResponse = {
+  success: boolean;
+  data: RouteDTO;
+};
+
+export type CreateRouteResponse = {
+  success: boolean;
+  data: RouteDTO; // hoặc route_id / message tùy BE trả
+};
+
+export type UpdateRouteResponse = {
+  success: boolean;
+  data: RouteDTO;
+};
+
+export type ChangeRouteStatusResponse = {
+  success: boolean;
+  data: RouteDTO;
+};
