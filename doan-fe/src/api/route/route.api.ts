@@ -1,5 +1,5 @@
 import { getJson, postJson, putJson } from "@/libs/http";
-import type { ChangeRouteStatusBody, CreateRouteBody, RouteDTO, UpdateRouteBody } from "./types";
+import type { ChangeRouteStatusBody, CreateRouteBody, RouteDTO, RoutesResponse, UpdateRouteBody } from "./types";
 
 // Endpoint thật đúng BE :contentReference[oaicite:9]{index=9} :contentReference[oaicite:10]{index=10}
 const ENDPOINT = {
@@ -13,8 +13,8 @@ const ENDPOINT = {
 export const routeApi = {
     // GET /api/routes :contentReference[oaicite:11]{index=11}
     async fetchAll(): Promise<RouteDTO[]> {
-        const res = await getJson<unknown>(ENDPOINT.all);
-        return (res as RouteDTO[]) ?? [];
+        const res = await getJson<RoutesResponse>(ENDPOINT.all);
+        return res?.data ?? [];
     },
 
     // GET /api/route/detail?route_id=123 :contentReference[oaicite:12]{index=12}

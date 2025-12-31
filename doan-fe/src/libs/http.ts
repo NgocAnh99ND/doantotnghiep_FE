@@ -34,7 +34,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 // src/libs/http.ts
-const BASE_URL = "http://<IP-BE>:<PORT>"; // hoặc lấy từ env/config của bạn
+const BASE_URL = "http://localhost:8080"; // hoặc lấy từ env/config của bạn
 
 async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {

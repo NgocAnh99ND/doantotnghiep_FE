@@ -38,3 +38,9 @@ export type ChangeRouteStatusBody = {
     route_id: number;
     route_status: RouteStatus;
 };
+
+export type RoutesResponse = {
+  success: boolean;
+  total: number;
+  data: RouteDTO[];
+};
