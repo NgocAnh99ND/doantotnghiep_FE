@@ -32,3 +32,27 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   }
   return data as T;
 }
+
+// src/libs/http.ts
+const BASE_URL = "http://<IP-BE>:<PORT>"; // hoặc lấy từ env/config của bạn
+
+async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!res.ok) {
+    const msg = data?.message ?? `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
+export const getJson = <T>(path: string) => requestJson<T>("GET", path);
+export const putJson = <T>(path: string, body: unknown) => requestJson<T>("PUT", path, body);
+
