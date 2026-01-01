@@ -11,48 +11,46 @@ export class HttpError extends Error {
   }
 }
 
-export async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Accept": "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-
-  const text = await res.text();
-  let data: any = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-
-  if (!res.ok) {
-    const msg = (data && typeof data === "object" && data.error) ? String(data.error) : `HTTP ${res.status}`;
-    throw new HttpError(msg, res.status, data);
-  }
-  return data as T;
+function resolveUrl(path: string) {
+  return path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
 }
 
-// src/libs/http.ts
-const BASE_URL = "http://localhost:8080"; // hoặc lấy từ env/config của bạn
+async function parseBodySafe(res: Response) {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text; // nếu BE trả plain text
+  }
+}
 
-async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+async function requestJson<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const url = resolveUrl(path);
+
+  const res = await fetch(url, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  const data = await parseBodySafe(res);
 
   if (!res.ok) {
-    const msg = data?.message ?? `HTTP ${res.status}`;
-    throw new Error(msg);
+    // BE của bạn đang trả { success, mess } nên ưu tiên mess nếu có
+    const msg =
+      (data && typeof data === "object" && (data.mess || data.message)) ? String((data as any).mess ?? (data as any).message)
+        : (data && typeof data === "object" && (data.error || data.err)) ? String((data as any).error ?? (data as any).err)
+          : `HTTP ${res.status}`;
+    throw new HttpError(msg, res.status, data);
   }
+
   return data as T;
 }
 
 export const getJson = <T>(path: string) => requestJson<T>("GET", path);
+export const postJson = <T>(path: string, body: unknown) => requestJson<T>("POST", path, body);
 export const putJson = <T>(path: string, body: unknown) => requestJson<T>("PUT", path, body);
-

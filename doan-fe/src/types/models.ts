@@ -5,8 +5,9 @@ export type User = {
   user_id: number;
   user_name: string;
   phone: string;
-  role: UserRole;
+  role: "DRIVER" | "PASSENGER";
   rating?: number;
+  passenger_id?: number | null;
 };
 
 export type ApiBase = {
@@ -14,6 +15,21 @@ export type ApiBase = {
   message?: string;
 };
 
-export type LoginResponse = ApiBase & { user?: User };
-export type RegisterResponse = ApiBase & { user?: User };
-export type LogoutResponse = ApiBase & { user_id?: number | null; message?: string; success: boolean };
+export type LoginResponse = {
+  success: boolean;
+  message?: string;
+  user?: User;
+  passenger_id?: number | null; // ✅ thêm
+};
+
+export type RegisterResponse = {
+  success: boolean;
+  message?: string;
+  user?: User;
+  passenger_id?: number | null; // ✅ thêm
+};
+
+export type LogoutResponse = {
+  success: boolean;
+  message?: string;
+};
