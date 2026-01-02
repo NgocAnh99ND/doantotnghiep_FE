@@ -18,7 +18,7 @@ type RouteItem = {
     route_status: string;
 };
 
-const STATUS: MatchTripStatus[] = ["PENDING", "ACCEPTED", "REJECTED", "FINISHED"];
+const STATUS: MatchTripStatus[] = ["PENDING", "ACCEPTED", "REJECTED", "FINISHED", "CANCELLED"];
 
 export default function MatchesPage() {
     const { status, user } = useAuth();
@@ -71,6 +71,9 @@ function DriverMatchesView({ driverUserId }: { driverUserId: number }) {
 
     const { data, loading, error, refetch } = useFetchMatchesByRoute(selectedRouteId ?? undefined);
 
+    const ROUTE_CARD_HEIGHT = 130; // bạn có thể chỉnh 88-110 tuỳ UI
+    const ROUTE_GAP = 10;
+
     const loadMyRoutes = React.useCallback(async () => {
         setRoutesLoading(true);
         try {
@@ -104,30 +107,42 @@ function DriverMatchesView({ driverUserId }: { driverUserId: number }) {
             <AppText style={styles.h1}>Matches (Driver)</AppText>
 
             <AppText style={styles.h2}>Chọn route của bạn</AppText>
-            <FlatList
-                data={routes}
-                keyExtractor={(it) => String(it.route_id)}
-                refreshing={routesLoading}
-                onRefresh={loadMyRoutes}
-                contentContainerStyle={styles.routeList}
-                ListEmptyComponent={!routesLoading ? <AppText>Bạn chưa có route OPEN nào.</AppText> : null}
-                renderItem={({ item }) => {
-                    const active = item.route_id === selectedRouteId;
-                    return (
-                        <Pressable
-                            onPress={() => setSelectedRouteId(item.route_id)}
-                            style={[styles.routeItem, active && styles.routeItemActive]}
-                        >
-                            <AppText style={styles.routeTitle}>
-                                #{item.route_id}: {item.start_location} → {item.end_location}
-                            </AppText>
-                            <AppText style={styles.routeSub}>Giờ: {item.time}</AppText>
-                            <AppText style={styles.routeSub}>Giá: {item.price}</AppText>
-                        </Pressable>
-                    );
-                }}
-            />
 
+            <View style={styles.routeWrapperOuter}>
+                <View style={styles.routeWrapperInner}>
+                    <FlatList
+                        data={routes}
+                        keyExtractor={(it) => String(it.route_id)}
+                        refreshing={routesLoading}
+                        onRefresh={loadMyRoutes}
+                        style={[styles.routeListBox, { maxHeight: ROUTE_CARD_HEIGHT * 2 + ROUTE_GAP }]} // ✅ chỉ cao đủ 2 card
+                        contentContainerStyle={styles.routeList}
+                        ItemSeparatorComponent={() => <View style={{ height: ROUTE_GAP }} />}
+                        showsVerticalScrollIndicator={true}
+                        ListEmptyComponent={!routesLoading ? <AppText>Bạn chưa có route OPEN nào.</AppText> : null}
+                        renderItem={({ item }) => {
+                            const active = item.route_id === selectedRouteId;
+                            return (
+                                <Pressable
+                                    onPress={() => setSelectedRouteId(item.route_id)}
+                                    style={[
+                                        styles.routeItem,
+                                        { height: ROUTE_CARD_HEIGHT },          // ✅ card cao cố định
+                                        active && styles.routeItemActive,
+                                    ]}
+                                >
+                                    <AppText style={styles.routeTitle} numberOfLines={2}>
+                                        #{item.route_id}: {item.start_location} → {item.end_location}
+                                    </AppText>
+
+                                    <AppText style={styles.routeSub} numberOfLines={1}>Giờ: {item.time}</AppText>
+                                    <AppText style={styles.routeSub} numberOfLines={1}>Giá: {item.price}</AppText>
+                                </Pressable>
+                            );
+                        }}
+                    />
+                </View>
+            </View>
 
             <AppText style={[styles.h2, { marginTop: 8 }]}>Danh sách match theo route</AppText>
             {error ? <AppText style={styles.err}>Lỗi: {String(error?.message ?? error)}</AppText> : null}
@@ -168,8 +183,12 @@ const styles = StyleSheet.create({
     card: { padding: 12, borderWidth: 1, borderColor: "#eee", borderRadius: 12, gap: 6, backgroundColor: "#fff" },
     cardTitle: { fontSize: 16, fontWeight: "800" },
 
+    routeListBox: {
+        borderRadius: 14,
+        maxHeight: 270,
+    },
+
     routeList: {
-        gap: 10,
         paddingVertical: 10,
     },
 
@@ -179,6 +198,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#eee",
         backgroundColor: "#fff",
+        justifyContent: "center", // ✅ để text nằm gọn trong chiều cao cố định
     },
 
     routeItemActive: {
@@ -195,6 +215,24 @@ const styles = StyleSheet.create({
         marginTop: 4,
         opacity: 0.75,
     },
+
+    routeWrapperOuter: {
+        height: 331,          // ✅ wrapper ngoài = 331
+        maxHeight: 331,
+        overflow: "hidden",   // ❗ bắt buộc để không phình
+    },
+
+    routeWrapperInner: {
+        height: 331,          // ✅ wrapper trong = 331
+        maxHeight: 331,
+        overflow: "hidden",
+    },
+
+    routeContent: {
+        paddingVertical: 10,
+        gap: 10,
+    },
+
 
     statusRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 10 },
     smallBtn: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: "#ddd" },
