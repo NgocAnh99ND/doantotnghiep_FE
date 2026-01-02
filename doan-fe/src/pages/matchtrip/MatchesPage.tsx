@@ -121,42 +121,6 @@ function DriverMatchesView({ driverUserId }: { driverUserId: number }) {
             <AppText style={styles.h2}>Chọn route của bạn</AppText>
             <CreateRouteBox driverId={driverUserId} onCreated={loadMyRoutes} />
 
-            <View style={styles.routeWrapperOuter}>
-                <View style={styles.routeWrapperInner}>
-                    <FlatList
-                        data={routes}
-                        keyExtractor={(it) => String(it.route_id)}
-                        refreshing={routesLoading}
-                        onRefresh={loadMyRoutes}
-                        style={[styles.routeListBox, { maxHeight: ROUTE_CARD_HEIGHT * 2 + ROUTE_GAP }]}
-                        contentContainerStyle={styles.routeList}
-                        ItemSeparatorComponent={() => <View style={{ height: ROUTE_GAP }} />}
-                        showsVerticalScrollIndicator={true}
-                        ListEmptyComponent={!routesLoading ? <AppText>Bạn chưa có route OPEN nào.</AppText> : null}
-                        renderItem={({ item }) => {
-                            const active = item.route_id === selectedRouteId;
-                            return (
-                                <Pressable
-                                    onPress={() => setSelectedRouteId(item.route_id)}
-                                    style={[styles.routeItem, { height: ROUTE_CARD_HEIGHT }, active && styles.routeItemActive]}
-                                >
-                                    <AppText style={styles.routeTitle} numberOfLines={2}>
-                                        #{item.route_id}: {item.start_location} → {item.end_location}
-                                    </AppText>
-
-                                    <AppText style={styles.routeSub} numberOfLines={1}>
-                                        Giờ: {item.time}
-                                    </AppText>
-                                    <AppText style={styles.routeSub} numberOfLines={1}>
-                                        Giá: {item.price}
-                                    </AppText>
-                                </Pressable>
-                            );
-                        }}
-                    />
-                </View>
-            </View>
-
             <AppText style={[styles.h2, { marginTop: 8 }]}>Danh sách match theo route</AppText>
             {error ? <AppText style={styles.err}>Lỗi: {String((error as any)?.message ?? error)}</AppText> : null}
 
@@ -256,56 +220,51 @@ function CreateRouteBox({
 
     return (
         <View style={styles.createBox}>
-            <Pressable onPress={() => setOpen((v) => !v)} style={styles.createHeader}>
+            <View>
                 <AppText style={styles.h2}>Đăng tuyến xe</AppText>
-                <AppText style={styles.link}>{open ? "Thu gọn" : "Mở form"}</AppText>
-            </Pressable>
+            </View>
+            <View style={{ gap: 10 }}>
+                <TextInput
+                    value={startLocation}
+                    onChangeText={setStartLocation}
+                    placeholder="Điểm đi (start_location)"
+                    style={styles.input}
+                />
+                <TextInput
+                    value={endLocation}
+                    onChangeText={setEndLocation}
+                    placeholder="Điểm đến (end_location)"
+                    style={styles.input}
+                />
+                <TextInput
+                    value={time}
+                    onChangeText={setTime}
+                    placeholder='Thời gian (vd "2025-01-10 08:00")'
+                    style={styles.input}
+                />
 
-            {open ? (
-                <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: "row", gap: 10 }}>
                     <TextInput
-                        value={startLocation}
-                        onChangeText={setStartLocation}
-                        placeholder="Điểm đi (start_location)"
-                        style={styles.input}
+                        value={seats}
+                        onChangeText={(t) => setSeats(toDigits(t))}
+                        placeholder="Số ghế"
+                        keyboardType="number-pad"
+                        style={[styles.input, { flex: 1, minWidth: 0 }]}
                     />
+
                     <TextInput
-                        value={endLocation}
-                        onChangeText={setEndLocation}
-                        placeholder="Điểm đến (end_location)"
-                        style={styles.input}
+                        value={formatWithDots(priceRaw)}
+                        onChangeText={(t) => setPriceRaw(toDigits(t))}
+                        placeholder="Giá"
+                        keyboardType="number-pad"
+                        style={[styles.input, { flex: 1, minWidth: 0 }]}
                     />
-                    <TextInput
-                        value={time}
-                        onChangeText={setTime}
-                        placeholder='Thời gian (vd "2025-01-10 08:00")'
-                        style={styles.input}
-                    />
-
-                    <View style={{ flexDirection: "row", gap: 10 }}>
-                        <TextInput
-                            value={seats}
-                            onChangeText={(t) => setSeats(toDigits(t))}
-                            placeholder="Số ghế"
-                            keyboardType="number-pad"
-                            style={[styles.input, { flex: 1, minWidth: 0 }]}
-                        />
-
-                        {/* ✅ Giá hiển thị có dấu . nhưng lưu raw digits */}
-                        <TextInput
-                            value={formatWithDots(priceRaw)}
-                            onChangeText={(t) => setPriceRaw(toDigits(t))}
-                            placeholder="Giá"
-                            keyboardType="number-pad"
-                            style={[styles.input, { flex: 1, minWidth: 0 }]}
-                        />
-                    </View>
-
-                    <Pressable onPress={submit} disabled={loading} style={[styles.btn, loading && { opacity: 0.6 }]}>
-                        <AppText style={styles.btnText}>{loading ? "Đang đăng..." : "Đăng tuyến"}</AppText>
-                    </Pressable>
                 </View>
-            ) : null}
+
+                <Pressable onPress={submit} disabled={loading} style={[styles.btn, loading && { opacity: 0.6 }]}>
+                    <AppText style={styles.btnText}>{loading ? "Đang đăng..." : "Đăng tuyến"}</AppText>
+                </Pressable>
+            </View>
         </View>
     );
 }
@@ -373,8 +332,6 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
         gap: 10,
     },
-    createHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    link: { fontWeight: "700", opacity: 0.8 },
     input: {
         borderWidth: 1,
         borderColor: "#ddd",
