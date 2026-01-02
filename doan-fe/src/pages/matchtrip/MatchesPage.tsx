@@ -1,5 +1,5 @@
 import React from "react";
-import { View, FlatList, Pressable, Alert, StyleSheet } from "react-native";
+import { View, FlatList, Pressable, Alert, StyleSheet, TextInput } from "react-native";
 import { useAuth } from "@/store/authStore";
 import { AppText } from "@/components";
 import { routeApi } from "@/api/route";
@@ -107,6 +107,7 @@ function DriverMatchesView({ driverUserId }: { driverUserId: number }) {
             <AppText style={styles.h1}>Matches (Driver)</AppText>
 
             <AppText style={styles.h2}>Chọn route của bạn</AppText>
+            <CreateRouteBox driverId={driverUserId} onCreated={loadMyRoutes} />
 
             <View style={styles.routeWrapperOuter}>
                 <View style={styles.routeWrapperInner}>
@@ -174,6 +175,131 @@ function DriverMatchesView({ driverUserId }: { driverUserId: number }) {
     );
 }
 
+function CreateRouteBox({
+    driverId,
+    onCreated,
+}: {
+    driverId: number;
+    onCreated: () => Promise<void> | void;
+}) {
+    const [open, setOpen] = React.useState(false);
+    const [loading, setLoading] = React.useState(false);
+
+    const [startLocation, setStartLocation] = React.useState("");
+    const [endLocation, setEndLocation] = React.useState("");
+    const [time, setTime] = React.useState(""); // ví dụ: "2025-01-10 08:00"
+    const [seats, setSeats] = React.useState("4");
+    const [price, setPrice] = React.useState("150000");
+
+    const reset = () => {
+        setStartLocation("");
+        setEndLocation("");
+        setTime("");
+        setSeats("4");
+        setPrice("150000");
+    };
+
+    const submit = async () => {
+        // validate đơn giản
+        if (!startLocation.trim() || !endLocation.trim() || !time.trim()) {
+            Alert.alert("Thiếu thông tin", "Vui lòng nhập điểm đi, điểm đến và thời gian.");
+            return;
+        }
+
+        const seatsNum = Number(seats);
+        const priceNum = Number(price);
+
+        if (!seatsNum || Number.isNaN(seatsNum) || seatsNum <= 0) {
+            Alert.alert("Sai dữ liệu", "Số ghế phải là số > 0.");
+            return;
+        }
+        if (Number.isNaN(priceNum) || priceNum < 0) {
+            Alert.alert("Sai dữ liệu", "Giá phải là số hợp lệ.");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await routeApi.create({
+                driver_id: driverId,
+                start_location: startLocation.trim(),
+                end_location: endLocation.trim(),
+                time: time.trim(),
+                seats: seatsNum,
+                price: priceNum,
+            });
+
+            // BE chỉ trả success/message nên refetch route list để thấy tuyến mới
+            await onCreated();
+
+            Alert.alert("Thành công", "Đã đăng tuyến xe.");
+            reset();
+            setOpen(false);
+        } catch (e: any) {
+            Alert.alert("Lỗi", e?.message ?? "Không thể đăng tuyến");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <View style={styles.createBox}>
+            <Pressable onPress={() => setOpen((v) => !v)} style={styles.createHeader}>
+                <AppText style={styles.h2}>Đăng tuyến xe</AppText>
+                <AppText style={styles.link}>{open ? "Thu gọn" : "Mở form"}</AppText>
+            </Pressable>
+
+            {open ? (
+                <View style={{ gap: 10 }}>
+                    <TextInput
+                        value={startLocation}
+                        onChangeText={setStartLocation}
+                        placeholder="Điểm đi (start_location)"
+                        style={styles.input}
+                    />
+                    <TextInput
+                        value={endLocation}
+                        onChangeText={setEndLocation}
+                        placeholder="Điểm đến (end_location)"
+                        style={styles.input}
+                    />
+                    <TextInput
+                        value={time}
+                        onChangeText={setTime}
+                        placeholder='Thời gian (vd "2025-01-10 08:00")'
+                        style={styles.input}
+                    />
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                        <TextInput
+                            value={seats}
+                            onChangeText={setSeats}
+                            placeholder="Số ghế"
+                            keyboardType="number-pad"
+                            style={[styles.input, { flex: 1 }]}
+                        />
+                        <TextInput
+                            value={price}
+                            onChangeText={setPrice}
+                            placeholder="Giá"
+                            keyboardType="number-pad"
+                            style={[styles.input, { flex: 1 }]}
+                        />
+                    </View>
+
+                    <Pressable
+                        onPress={submit}
+                        disabled={loading}
+                        style={[styles.btn, loading && { opacity: 0.6 }]}
+                    >
+                        <AppText style={styles.btnText}>{loading ? "Đang đăng..." : "Đăng tuyến"}</AppText>
+                    </Pressable>
+                </View>
+            ) : null}
+        </View>
+    );
+}
+
+
 const styles = StyleSheet.create({
     container: { flex: 1, padding: 16, gap: 8 },
     h1: { fontSize: 20, fontWeight: "800" },
@@ -232,6 +358,33 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         gap: 10,
     },
+
+    createBox: {
+        marginTop: 10,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: "#eee",
+        borderRadius: 12,
+        backgroundColor: "#fff",
+        gap: 10,
+    },
+    createHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    link: { fontWeight: "700", opacity: 0.8 },
+    input: {
+        borderWidth: 1,
+        borderColor: "#ddd",
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+    },
+    btn: {
+        paddingVertical: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#111",
+        alignItems: "center",
+    },
+    btnText: { fontWeight: "800" },
 
 
     statusRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 10 },
