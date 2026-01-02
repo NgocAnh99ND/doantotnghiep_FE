@@ -20,6 +20,18 @@ type RouteItem = {
 
 const STATUS: MatchTripStatus[] = ["PENDING", "ACCEPTED", "REJECTED", "FINISHED", "CANCELLED"];
 
+/** format 150000 -> 150.000 */
+function formatWithDots(rawDigits: string) {
+    if (!rawDigits) return "";
+    const digits = rawDigits.replace(/\D/g, "");
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/** lấy digits từ input (bỏ . và ký tự khác) */
+function toDigits(text: string) {
+    return (text ?? "").replace(/\D/g, "");
+}
+
 export default function MatchesPage() {
     const { status, user } = useAuth();
 
@@ -39,7 +51,7 @@ export default function MatchesPage() {
             <View style={styles.container}>
                 <AppText style={styles.h1}>Matches của bạn</AppText>
 
-                {error ? <AppText style={styles.err}>Lỗi: {String(error?.message ?? error)}</AppText> : null}
+                {error ? <AppText style={styles.err}>Lỗi: {String((error as any)?.message ?? error)}</AppText> : null}
 
                 <FlatList
                     data={data}
@@ -71,7 +83,7 @@ function DriverMatchesView({ driverUserId }: { driverUserId: number }) {
 
     const { data, loading, error, refetch } = useFetchMatchesByRoute(selectedRouteId ?? undefined);
 
-    const ROUTE_CARD_HEIGHT = 130; // bạn có thể chỉnh 88-110 tuỳ UI
+    const ROUTE_CARD_HEIGHT = 130;
     const ROUTE_GAP = 10;
 
     const loadMyRoutes = React.useCallback(async () => {
@@ -116,7 +128,7 @@ function DriverMatchesView({ driverUserId }: { driverUserId: number }) {
                         keyExtractor={(it) => String(it.route_id)}
                         refreshing={routesLoading}
                         onRefresh={loadMyRoutes}
-                        style={[styles.routeListBox, { maxHeight: ROUTE_CARD_HEIGHT * 2 + ROUTE_GAP }]} // ✅ chỉ cao đủ 2 card
+                        style={[styles.routeListBox, { maxHeight: ROUTE_CARD_HEIGHT * 2 + ROUTE_GAP }]}
                         contentContainerStyle={styles.routeList}
                         ItemSeparatorComponent={() => <View style={{ height: ROUTE_GAP }} />}
                         showsVerticalScrollIndicator={true}
@@ -126,18 +138,18 @@ function DriverMatchesView({ driverUserId }: { driverUserId: number }) {
                             return (
                                 <Pressable
                                     onPress={() => setSelectedRouteId(item.route_id)}
-                                    style={[
-                                        styles.routeItem,
-                                        { height: ROUTE_CARD_HEIGHT },          // ✅ card cao cố định
-                                        active && styles.routeItemActive,
-                                    ]}
+                                    style={[styles.routeItem, { height: ROUTE_CARD_HEIGHT }, active && styles.routeItemActive]}
                                 >
                                     <AppText style={styles.routeTitle} numberOfLines={2}>
                                         #{item.route_id}: {item.start_location} → {item.end_location}
                                     </AppText>
 
-                                    <AppText style={styles.routeSub} numberOfLines={1}>Giờ: {item.time}</AppText>
-                                    <AppText style={styles.routeSub} numberOfLines={1}>Giá: {item.price}</AppText>
+                                    <AppText style={styles.routeSub} numberOfLines={1}>
+                                        Giờ: {item.time}
+                                    </AppText>
+                                    <AppText style={styles.routeSub} numberOfLines={1}>
+                                        Giá: {item.price}
+                                    </AppText>
                                 </Pressable>
                             );
                         }}
@@ -146,7 +158,7 @@ function DriverMatchesView({ driverUserId }: { driverUserId: number }) {
             </View>
 
             <AppText style={[styles.h2, { marginTop: 8 }]}>Danh sách match theo route</AppText>
-            {error ? <AppText style={styles.err}>Lỗi: {String(error?.message ?? error)}</AppText> : null}
+            {error ? <AppText style={styles.err}>Lỗi: {String((error as any)?.message ?? error)}</AppText> : null}
 
             <FlatList
                 data={data}
@@ -187,27 +199,28 @@ function CreateRouteBox({
 
     const [startLocation, setStartLocation] = React.useState("");
     const [endLocation, setEndLocation] = React.useState("");
-    const [time, setTime] = React.useState(""); // ví dụ: "2025-01-10 08:00"
+    const [time, setTime] = React.useState("");
     const [seats, setSeats] = React.useState("4");
-    const [price, setPrice] = React.useState("150000");
+
+    // ✅ priceRaw: lưu digits "150000" (KHÔNG dấu .)
+    const [priceRaw, setPriceRaw] = React.useState("150000");
 
     const reset = () => {
         setStartLocation("");
         setEndLocation("");
         setTime("");
         setSeats("4");
-        setPrice("150000");
+        setPriceRaw("150000");
     };
 
     const submit = async () => {
-        // validate đơn giản
         if (!startLocation.trim() || !endLocation.trim() || !time.trim()) {
             Alert.alert("Thiếu thông tin", "Vui lòng nhập điểm đi, điểm đến và thời gian.");
             return;
         }
 
-        const seatsNum = Number(seats);
-        const priceNum = Number(price);
+        const seatsNum = Number(toDigits(seats));
+        const priceNum = Number(priceRaw); // ✅ raw digits -> number
 
         if (!seatsNum || Number.isNaN(seatsNum) || seatsNum <= 0) {
             Alert.alert("Sai dữ liệu", "Số ghế phải là số > 0.");
@@ -229,7 +242,6 @@ function CreateRouteBox({
                 price: priceNum,
             });
 
-            // BE chỉ trả success/message nên refetch route list để thấy tuyến mới
             await onCreated();
 
             Alert.alert("Thành công", "Đã đăng tuyến xe.");
@@ -269,28 +281,27 @@ function CreateRouteBox({
                         placeholder='Thời gian (vd "2025-01-10 08:00")'
                         style={styles.input}
                     />
+
                     <View style={{ flexDirection: "row", gap: 10 }}>
                         <TextInput
                             value={seats}
-                            onChangeText={setSeats}
+                            onChangeText={(t) => setSeats(toDigits(t))}
                             placeholder="Số ghế"
                             keyboardType="number-pad"
-                            style={[styles.input, { flex: 1 }]}
+                            style={[styles.input, { flex: 1, minWidth: 0 }]}
                         />
+
+                        {/* ✅ Giá hiển thị có dấu . nhưng lưu raw digits */}
                         <TextInput
-                            value={price}
-                            onChangeText={setPrice}
+                            value={formatWithDots(priceRaw)}
+                            onChangeText={(t) => setPriceRaw(toDigits(t))}
                             placeholder="Giá"
                             keyboardType="number-pad"
-                            style={[styles.input, { flex: 1 }]}
+                            style={[styles.input, { flex: 1, minWidth: 0 }]}
                         />
                     </View>
 
-                    <Pressable
-                        onPress={submit}
-                        disabled={loading}
-                        style={[styles.btn, loading && { opacity: 0.6 }]}
-                    >
+                    <Pressable onPress={submit} disabled={loading} style={[styles.btn, loading && { opacity: 0.6 }]}>
                         <AppText style={styles.btnText}>{loading ? "Đang đăng..." : "Đăng tuyến"}</AppText>
                     </Pressable>
                 </View>
@@ -298,7 +309,6 @@ function CreateRouteBox({
         </View>
     );
 }
-
 
 const styles = StyleSheet.create({
     container: { flex: 1, padding: 16, gap: 8 },
@@ -324,7 +334,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#eee",
         backgroundColor: "#fff",
-        justifyContent: "center", // ✅ để text nằm gọn trong chiều cao cố định
+        justifyContent: "center",
     },
 
     routeItemActive: {
@@ -343,20 +353,15 @@ const styles = StyleSheet.create({
     },
 
     routeWrapperOuter: {
-        height: 331,          // ✅ wrapper ngoài = 331
-        maxHeight: 331,
-        overflow: "hidden",   // ❗ bắt buộc để không phình
-    },
-
-    routeWrapperInner: {
-        height: 331,          // ✅ wrapper trong = 331
+        height: 331,
         maxHeight: 331,
         overflow: "hidden",
     },
 
-    routeContent: {
-        paddingVertical: 10,
-        gap: 10,
+    routeWrapperInner: {
+        height: 331,
+        maxHeight: 331,
+        overflow: "hidden",
     },
 
     createBox: {
@@ -385,7 +390,6 @@ const styles = StyleSheet.create({
         alignItems: "center",
     },
     btnText: { fontWeight: "800" },
-
 
     statusRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 10 },
     smallBtn: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: "#ddd" },
