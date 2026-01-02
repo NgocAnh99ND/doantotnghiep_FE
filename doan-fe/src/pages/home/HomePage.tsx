@@ -1,50 +1,63 @@
 import React from "react";
-import { StyleSheet, View, Pressable } from "react-native";
+import { StyleSheet, View, Pressable, TextInput } from "react-native";
 import { useRouter } from "expo-router";
+import MapView, { Marker } from "react-native-maps";
 import { Screen, AppText, Divider } from "@/components";
 import { theme } from "@/styles/theme";
 
-type QuickActionProps = {
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-};
-
-function QuickAction({ title, subtitle, onPress }: QuickActionProps) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
-      <AppText style={styles.cardTitle}>{title}</AppText>
-      <AppText style={styles.cardSubtitle}>{subtitle}</AppText>
-    </Pressable>
-  );
-}
-
 export default function HomePage() {
   const router = useRouter();
+
+  const [startLocation, setStartLocation] = React.useState("");
+  const [endLocation, setEndLocation] = React.useState("");
+
+  const onSearch = () => {
+    // Tuỳ bạn: push sang routes và truyền params
+    // Ví dụ: /(tabs)/routes?start=...&end=...
+    router.push({
+      pathname: "/(tabs)/routes",
+      params: {
+        start: startLocation.trim(),
+        end: endLocation.trim(),
+      },
+    } as any);
+  };
 
   return (
     <Screen>
       <View style={styles.header}>
         <AppText style={styles.h1}>Tiện Chuyến</AppText>
-        <AppText style={styles.sub}>Chọn nhanh một tác vụ để bắt đầu</AppText>
+        <AppText style={styles.sub}>Nhập điểm đi và điểm đến để tìm tuyến phù hợp</AppText>
       </View>
 
-      <View style={styles.grid}>
-        <QuickAction
-          title="Tìm tuyến"
-          subtitle="Xem các tuyến đang mở"
-          onPress={() => router.push("/(tabs)/routes")}
+      {/* MAP */}
+
+      {/* INPUTS */}
+      <View style={styles.form}>
+        <AppText style={styles.sectionTitle}>Điểm đi / Điểm đến</AppText>
+
+        <TextInput
+          value={startLocation}
+          onChangeText={setStartLocation}
+          placeholder="Điểm đi (start_location)"
+          style={styles.input}
+          autoCapitalize="none"
         />
-        <QuickAction
-          title="Tạo yêu cầu"
-          subtitle="Đặt chuyến cho hành khách"
-          onPress={() => router.push("/(tabs)/requests")}
+        <TextInput
+          value={endLocation}
+          onChangeText={setEndLocation}
+          placeholder="Điểm đến (end_location)"
+          style={styles.input}
+          autoCapitalize="none"
         />
-        <QuickAction
-          title="Ghép chuyến"
-          subtitle="Xem/duyệt các ghép chuyến"
-          onPress={() => router.push("/(tabs)/matches")}
-        />
+
+        <Pressable
+          onPress={onSearch}
+          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+          disabled={!startLocation.trim() || !endLocation.trim()}
+        >
+          <AppText style={styles.primaryBtnText}>Tìm tuyến</AppText>
+        </Pressable>
       </View>
 
       <Divider />
@@ -52,9 +65,15 @@ export default function HomePage() {
       <View style={styles.section}>
         <AppText style={styles.sectionTitle}>Gợi ý nhanh</AppText>
         <View style={styles.pillRow}>
-          <View style={styles.pill}><AppText style={styles.pillText}>Tuyến gần bạn</AppText></View>
-          <View style={styles.pill}><AppText style={styles.pillText}>Giá tốt</AppText></View>
-          <View style={styles.pill}><AppText style={styles.pillText}>Giờ khởi hành sớm</AppText></View>
+          <View style={styles.pill}>
+            <AppText style={styles.pillText}>Tuyến gần bạn</AppText>
+          </View>
+          <View style={styles.pill}>
+            <AppText style={styles.pillText}>Giá tốt</AppText>
+          </View>
+          <View style={styles.pill}>
+            <AppText style={styles.pillText}>Giờ khởi hành sớm</AppText>
+          </View>
         </View>
       </View>
 
@@ -74,21 +93,54 @@ const styles = StyleSheet.create({
   h1: { fontSize: 26, fontWeight: "700" },
   sub: { fontSize: 14, opacity: 0.7 },
 
-  grid: { gap: 12 },
-
-  card: {
-    padding: 14,
+  mapWrap: {
+    height: 240,
     borderRadius: 14,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
   },
-  cardPressed: { opacity: 0.8 },
-  cardTitle: { fontSize: 16, fontWeight: "700" },
-  cardSubtitle: { fontSize: 13, opacity: 0.7, marginTop: 4 },
+
+  // nếu dùng placeholder
+  mapPlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  form: {
+    marginTop: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 14,
+    backgroundColor: theme.colors.card,
+    gap: 10,
+  },
 
   section: { marginTop: 14, gap: 10 },
   sectionTitle: { fontSize: 16, fontWeight: "700" },
+
+  input: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+  },
+
+  primaryBtn: {
+    marginTop: 2,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#111",
+    alignItems: "center",
+    backgroundColor: "#111",
+  },
+  primaryBtnText: { fontWeight: "800", color: "#fff" },
 
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   pill: {
