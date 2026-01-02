@@ -3,29 +3,36 @@ import { Alert, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Screen, AppText, AppButton, Divider } from "@/components";
 import { useAuth } from "@/store/authStore";
+ import { Platform } from "react-native";
 
 export default function ProfilePage() {
     const router = useRouter();
     const { status, user, logout } = useAuth();
 
-    const onLogout = () => {
-        Alert.alert(
-            "Đăng xuất",
-            "Bạn chắc chắn muốn đăng xuất?",
-            [
-                { text: "Huỷ", style: "cancel" },
-                {
-                    text: "Đăng xuất",
-                    onPress: () => {
-                        logout();
-                        router.replace("/");
-                    },
-                },
 
-            ],
-            { cancelable: true }
-        );
-    };
+
+const onLogout = () => {
+  if (Platform.OS === "web") {
+    const ok = window.confirm("Bạn chắc chắn muốn đăng xuất?");
+    if (!ok) return;
+    void (async () => {
+      console.log("logout2");
+      await logout();
+      router.replace("/");
+    })();
+    return;
+  }
+
+  Alert.alert("Đăng xuất", "Bạn chắc chắn muốn đăng xuất?", [
+    { text: "Huỷ", style: "cancel" },
+    { text: "Đăng xuất", style: "destructive", onPress: () => void (async () => {
+      console.log("logout2");
+      await logout();
+      router.replace("/");
+    })() },
+  ]);
+};
+
 
     if (status === "loading") {
         return (
