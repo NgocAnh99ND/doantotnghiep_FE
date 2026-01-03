@@ -1,1 +1,1 @@
-export { default } from "../../pages/riderequest/RequestListPage";
+export { default } from "../../pages/driver/DriverRequestsPage";

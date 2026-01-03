@@ -1,55 +1,55 @@
 import { useCallback, useEffect, useState } from "react";
 import { matchTripApi } from "./matchtrip.api";
-import type { MatchTripItem } from "./typeds";
+import type { DriverAcceptedMatchItem, DriverPendingRequestItem } from "./typeds";
 
-export function useFetchMatchesByPassenger(passenger_id?: number) {
-    const [data, setData] = useState<MatchTripItem[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<any>(null);
+export function useFetchPendingRequestsByDriver(driver_id?: number) {
+  const [data, setData] = useState<DriverPendingRequestItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<any>(null);
 
-    const refetch = useCallback(async () => {
-        if (!passenger_id) return;
-        setLoading(true);
-        setError(null);
-        try {
-            const list = await matchTripApi.fetchByPassenger(passenger_id);
-            setData(list ?? []);
-        } catch (e) {
-            setError(e);
-        } finally {
-            setLoading(false);
-        }
-    }, [passenger_id]);
+  const refetch = useCallback(async () => {
+    if (!driver_id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await matchTripApi.fetchPendingByDriver(driver_id);
+      setData(list ?? []);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [driver_id]);
 
-    useEffect(() => {
-        refetch();
-    }, [refetch]);
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
-    return { data, loading, error, refetch };
+  return { data, loading, error, refetch };
 }
 
-export function useFetchMatchesByRoute(route_id?: number) {
-    const [data, setData] = useState<MatchTripItem[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<any>(null);
+export function useFetchAcceptedMatchesByDriver(driver_id?: number) {
+  const [data, setData] = useState<DriverAcceptedMatchItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<any>(null);
 
-    const refetch = useCallback(async () => {
-        if (!route_id) return;
-        setLoading(true);
-        setError(null);
-        try {
-            const list = await matchTripApi.fetchByRoute(route_id);
-            setData(list ?? []);
-        } catch (e) {
-            setError(e);
-        } finally {
-            setLoading(false);
-        }
-    }, [route_id]);
+  const refetch = useCallback(async () => {
+    if (!driver_id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await matchTripApi.fetchAcceptedByDriver(driver_id);
+      setData(list ?? []);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [driver_id]);
 
-    // useEffect(() => {
-    //     refetch();
-    // }, [refetch]);
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
-    return { data, loading, error, refetch };
+  return { data, loading, error, refetch };
 }
