@@ -93,16 +93,6 @@ export const matchTripApi = {
     ensureOk(res);
   },
 
-  //  async fetchAcceptedMatchesByDriver(driver_id: number) {
-  //   const url = `${ENDPOINT.acceptedByDriver}?driver_id=${encodeURIComponent(String(driver_id))}`;
-  //   return getJson<any>(url);
-  // },
-
-  // async fetchFinishedMatchesByDriver(driver_id: number) {
-  //   const url = `${ENDPOINT.finishedByDriver}?driver_id=${encodeURIComponent(String(driver_id))}`;
-  //   return getJson<any>(url);
-  // },
-
     async fetchFinishedByDriver(driver_id: number): Promise<DriverAcceptedMatchItem[]> {
     // cấu trúc JSON y hệt accepted (route + ride_request), nên reuse type
     const res = await getJson<ListResponse<DriverAcceptedMatchItem>>(
