@@ -5,6 +5,7 @@ import { AppText, Divider, Screen, Loading } from "@/components";
 import { routeApi } from "@/api/route";
 import { matchTripApi } from "@/api/matchtrip/matchtrip.api";
 import { useFetchAcceptedMatchesByDriver, useFetchFinishedMatchesByDriver } from "@/api/matchtrip/useFetch";
+import { useFocusEffect } from "expo-router";
 
 /** =========================
  * Helpers
@@ -35,15 +36,87 @@ export default function MatchesPage() {
   }
 
   if (user.role === "PASSENGER") {
-    return (
-      <Screen>
-        <AppText>Passenger Matches: (giữ phần cũ nếu bạn cần)</AppText>
-      </Screen>
-    );
+    const passengerId = user.passenger_id ?? null;
+    if (!passengerId) {
+      return (
+        <Screen>
+          <AppText>Thiếu passenger_id. Vui lòng đăng xuất và đăng nhập lại.</AppText>
+        </Screen>
+      );
+    }
+    return <PassengerMatchesView passengerId={passengerId} />;
   }
 
-  // DRIVER
   return <DriverMatchesView driverId={user.user_id} />;
+}
+
+function PassengerMatchesView({ passengerId }: { passengerId: number }) {
+  const [data, setData] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const refetch = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await matchTripApi.fetchByPassenger(passengerId);
+      setData(list ?? []);
+    } catch (e: any) {
+      setError(e?.message ?? "Không tải được matches");
+    } finally {
+      setLoading(false);
+    }
+  }, [passengerId]);
+
+  React.useEffect(() => { refetch(); }, [refetch]);
+
+  // ✅ quay lại tab matches sẽ tự refresh (để thấy ACCEPTED sau khi driver accept)
+  useFocusEffect(
+    React.useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
+  return (
+    <Screen>
+      <View style={{ gap: 6, paddingBottom: 8 }}>
+        <AppText style={{ fontSize: 20, fontWeight: "800" }}>Matches (Passenger)</AppText>
+      </View>
+
+      <Divider />
+
+      {loading ? <Loading /> : null}
+      {error ? <AppText style={{ marginTop: 10, color: "crimson" }}>{error}</AppText> : null}
+
+      <FlatList
+        data={data}
+        keyExtractor={(it: any) => String(it.match_id)}
+        refreshing={loading}
+        onRefresh={refetch}
+        contentContainerStyle={{ paddingTop: 12, gap: 10, paddingBottom: 20 }}
+        ListEmptyComponent={!loading ? <AppText>Chưa có match nào.</AppText> : null}
+        renderItem={({ item }: any) => (
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "#e5e7eb",
+              backgroundColor: "#fff",
+              gap: 6,
+            }}
+          >
+            <AppText style={{ fontSize: 15, fontWeight: "900" }}>Match #{item.match_id}</AppText>
+            <AppText style={{ fontSize: 13, opacity: 0.85 }}>route_id: {item.route_id ?? "-"}</AppText>
+            <AppText style={{ fontSize: 13, opacity: 0.85 }}>ride_request_id: {item.ride_request_id ?? "-"}</AppText>
+            <AppText style={{ marginTop: 6, fontSize: 12, opacity: 0.85, fontWeight: "900" }}>
+              Status: {item.match_trip_status}
+            </AppText>
+          </View>
+        )}
+      />
+    </Screen>
+  );
 }
 
 /** =========================

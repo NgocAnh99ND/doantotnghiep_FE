@@ -1,3 +1,4 @@
+// api/riderequest/types.ts
 export type RideRequestStatus = string;
 
 export type RideRequestDTO = {
@@ -7,7 +8,8 @@ export type RideRequestDTO = {
     drop_off: string;
     time: string;
     passengers: number;
-    status?: RideRequestStatus;
+    ride_request_status?: RideRequestStatus; // ✅ theo DB
+    status?: RideRequestStatus; // (giữ lại nếu BE cũ dùng "status")
 };
 
 export type CreateRideRequestBody = {
@@ -18,19 +20,13 @@ export type CreateRideRequestBody = {
     passengers: number;
 };
 
-export type CancelRideRequestBody = {
-    ride_request_id: number;
-};
+export type CancelRideRequestBody = { ride_request_id: number };
 
-export type RideRequestCreateResponse = {
-    success: boolean;
-    data: RideRequestDTO;
-};
+export type RideRequestCreateResponse =
+    | { success: true; data: RideRequestDTO; message?: string; mess?: string }
+    | { success: false; message?: string; mess?: string; error?: string };
 
-export type RideRequestDetailResponse = {
-    success: boolean;
-    data: RideRequestDTO;
-};
+export type RideRequestDetailResponse = { success: boolean; data: RideRequestDTO };
 
 export type RideRequestsByPassengerResponse = {
     success: boolean;
@@ -40,8 +36,10 @@ export type RideRequestsByPassengerResponse = {
 
 export type RideRequestCancelResponse = {
     success: boolean;
-    data?: RideRequestDTO; // nếu BE trả về request sau khi cancel
+    data?: RideRequestDTO;
     message?: string;
 };
 
-export type SimpleResponse = { success: boolean; mess?: string };
+export type SimpleResponse =
+    | { success: true; message?: string; mess?: string }
+    | { success: false; message?: string; mess?: string; error?: string };
