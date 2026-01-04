@@ -21,29 +21,42 @@ async function parseBodySafe(res: Response) {
   try {
     return JSON.parse(text);
   } catch {
-    return text; // nếu BE trả plain text
+    return text;
   }
 }
 
-async function requestJson<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+async function requestJson<T>(method: Method, path: string, body?: unknown): Promise<T> {
   const url = resolveUrl(path);
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+
+  // ✅ chỉ set Content-Type khi có body (POST/PUT/PATCH)
+  const hasJsonBody = body !== undefined && method !== "GET" && method !== "DELETE";
+  if (hasJsonBody) {
+    headers["Content-Type"] = "application/json";
+  }
 
   const res = await fetch(url, {
     method,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers,
+    // ✅ GET/DELETE không nên gửi body
+    body: hasJsonBody ? JSON.stringify(body) : undefined,
+    // nếu bạn dùng cookie session thì mở credentials:
+    // credentials: "include",
   });
 
   const data = await parseBodySafe(res);
 
   if (!res.ok) {
-    // BE của bạn đang trả { success, mess } nên ưu tiên mess nếu có
     const msg =
-      (data && typeof data === "object" && (data.mess || data.message)) ? String((data as any).mess ?? (data as any).message)
-        : (data && typeof data === "object" && (data.error || data.err)) ? String((data as any).error ?? (data as any).err)
+      data && typeof data === "object" && ((data as any).mess || (data as any).message)
+        ? String((data as any).mess ?? (data as any).message)
+        : data && typeof data === "object" && ((data as any).error || (data as any).err)
+          ? String((data as any).error ?? (data as any).err)
           : `HTTP ${res.status}`;
     throw new HttpError(msg, res.status, data);
   }

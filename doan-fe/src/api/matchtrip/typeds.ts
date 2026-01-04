@@ -21,11 +21,16 @@ export type MatchTripItem = {
 // Shared responses
 export type ListResponse<T> =
   | { success: true; total: number; data: T[] }
-  | { success: false; message?: string };
+  | { success: false; message?: string; mess?: string; error?: string };
 
 export type MessageResponse =
   | { success: true; message?: string; mess?: string }
-  | { success: false; message?: string; mess?: string };
+  | { success: false; message?: string; mess?: string; error?: string };
+
+// ✅ NEW: create match trip trả match_id (hướng A)
+export type CreateMatchTripResponse =
+  | { success: true; message?: string; data: { match_id: number } }
+  | { success: false; message?: string; mess?: string; error?: string };
 
 // ===== Driver DTOs (API mới trả kèm route + ride_request) =====
 export type DriverRouteInfo = {
@@ -41,7 +46,10 @@ export type DriverRouteInfo = {
 
 export type DriverRideRequestInfo = {
   ride_request_id: number;
-  passenger_id: number;
+  // ⚠️ BE của bạn hiện query getPendingByDriver/getAcceptedByDriver KHÔNG select passenger_id
+  // Nếu BE chưa trả passenger_id thì để optional để khỏi crash FE.
+  passenger_id?: number;
+
   pick_up: string;
   drop_off: string;
   time: string;
