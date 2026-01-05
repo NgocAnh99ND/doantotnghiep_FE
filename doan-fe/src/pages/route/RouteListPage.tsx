@@ -176,7 +176,7 @@ export default function RouteListPage() {
                   onPress={() => onCancel(item)}
                   style={[styles.btn, styles.cancelBtn, busy && { opacity: 0.5 }]}
                 >
-                  <AppText style={styles.btnText}>Hủy</AppText>
+                  <AppText style={styles.btnTextCancel}>Hủy</AppText>
                 </Pressable>
               </View>
             </View>
@@ -210,4 +210,5 @@ const styles = StyleSheet.create({
   bookBtn: { borderColor: "#111", backgroundColor: "#111" },
   cancelBtn: { borderColor: "#dc2626" },
   btnText: { fontWeight: "900", color: "#fff" },
+  btnTextCancel:{fontWeight: "900", color: "#111"}
 });
