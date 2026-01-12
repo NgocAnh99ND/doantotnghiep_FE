@@ -1,4 +1,3 @@
-// components/ui/Screen.tsx
 import React from "react";
 import { StyleSheet, View, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,7 +12,11 @@ export default function Screen({
   return (
     <SafeAreaView style={styles.safe}>
       {scroll ? (
-        <ScrollView contentContainerStyle={styles.container}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
           {children}
         </ScrollView>
       ) : (
@@ -25,5 +28,6 @@ export default function Screen({
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
+  scroll: { flex: 1 },
   container: { flexGrow: 1, padding: 16 },
 });

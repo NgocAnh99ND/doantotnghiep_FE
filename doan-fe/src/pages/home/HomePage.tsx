@@ -17,7 +17,6 @@ const FALLBACK_REGION: Region = {
   longitudeDelta: 0.05,
 };
 
-// ========= Permission + helpers =========
 async function ensureLocationPermission(): Promise<{ ok: boolean; canAskAgain: boolean }> {
   if (Platform.OS === "web") return { ok: false, canAskAgain: true };
 
@@ -39,7 +38,6 @@ function fmtLatLng(p: LatLng) {
 }
 
 function isLatLngText(text: string): LatLng | null {
-  // hỗ trợ "10.123, 106.456" hoặc "10.123 106.456"
   const t = (text || "").trim();
   const m = t.match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
   if (!m) return null;
@@ -58,16 +56,7 @@ async function reverseToText(p: LatLng): Promise<string> {
     const a = res?.[0];
     if (!a) return fmtLatLng(p);
 
-    // expo-location type có district, subregion... (KHÔNG có subdistrict)
-    const parts = [
-      a.name,
-      a.street,
-      a.city,
-      a.district, // ✅ đúng type
-      a.region,
-      a.country,
-    ].filter(Boolean);
-
+    const parts = [a.name, a.street, a.city, a.district, a.region, a.country].filter(Boolean);
     const text = parts.join(", ").replace(/\s+/g, " ").trim();
     return text || fmtLatLng(p);
   } catch {
@@ -80,7 +69,6 @@ async function forwardGeocode(text: string): Promise<LatLng | null> {
   const q = (text || "").trim();
   if (!q) return null;
 
-  // nếu user nhập lat,lng thì parse nhanh
   const parsed = isLatLngText(q);
   if (parsed) return parsed;
 
@@ -103,7 +91,6 @@ function useDebouncedValue<T>(value: T, ms: number) {
   return v;
 }
 
-// ========= Native Map (dynamic import to avoid web crash) =========
 function NativeMap({
   region,
   start,
@@ -126,7 +113,7 @@ function NativeMap({
   return (
     <MapView
       style={{ flex: 1 }}
-      region={region} // ✅ dùng region để map nhảy theo state
+      region={region}
       onPress={(e: any) => {
         const c = e?.nativeEvent?.coordinate;
         if (!c) return;
@@ -139,30 +126,23 @@ function NativeMap({
   );
 }
 
-// ========= Page =========
 export default function HomePage() {
   const router = useRouter();
 
   const [locDenied, setLocDenied] = React.useState(false);
 
-  // Input text: gõ tay được
   const [startText, setStartText] = React.useState("");
   const [endText, setEndText] = React.useState("");
 
-  // Toạ độ (khi chọn map / geocode)
   const [start, setStart] = React.useState<LatLng | null>(null);
   const [end, setEnd] = React.useState<LatLng | null>(null);
 
   const [picking, setPicking] = React.useState<"start" | "end">("start");
-
-  // Map region
   const [region, setRegion] = React.useState<Region>(FALLBACK_REGION);
 
-  // Debounce input để geocode
   const startTextDebounced = useDebouncedValue(startText, 800);
   const endTextDebounced = useDebouncedValue(endText, 800);
 
-  // ===== 1) xin quyền + lấy vị trí hiện tại -> center map + fill start input =====
   React.useEffect(() => {
     (async () => {
       if (Platform.OS === "web") return;
@@ -171,14 +151,10 @@ export default function HomePage() {
       if (!perm.ok) {
         setLocDenied(true);
         if (!perm.canAskAgain) {
-          Alert.alert(
-            "Cần bật quyền vị trí",
-            "Bạn đã tắt quyền Location. Hãy vào Cài đặt để bật lại.",
-            [
-              { text: "Huỷ", style: "cancel" },
-              { text: "Mở Cài đặt", onPress: () => Linking.openSettings() },
-            ]
-          );
+          Alert.alert("Cần bật quyền vị trí", "Bạn đã tắt quyền Location. Hãy vào Cài đặt để bật lại.", [
+            { text: "Huỷ", style: "cancel" },
+            { text: "Mở Cài đặt", onPress: () => Linking.openSettings() },
+          ]);
         }
         return;
       }
@@ -189,26 +165,15 @@ export default function HomePage() {
         const me = await getMyLocation();
         if (!me) return;
 
-        // ✅ center map đúng vị trí hiện tại
-        setRegion((prev) => ({
-          ...prev,
-          latitude: me.lat,
-          longitude: me.lng,
-        }));
-
-        // ✅ default: điểm đi = vị trí hiện tại
+        setRegion((prev) => ({ ...prev, latitude: me.lat, longitude: me.lng }));
         setStart(me);
 
-        // ✅ reverse geocode để ra địa chỉ (nếu fail thì fallback lat,lng)
         const addr = await reverseToText(me);
         setStartText(addr);
-      } catch {
-        // ignore
-      }
+      } catch {}
     })();
   }, []);
 
-  // ===== 2) user gõ startText -> geocode -> update start coord + map center =====
   React.useEffect(() => {
     (async () => {
       if (Platform.OS === "web") return;
@@ -219,15 +184,10 @@ export default function HomePage() {
       if (!p) return;
 
       setStart(p);
-      setRegion((prev) => ({
-        ...prev,
-        latitude: p.lat,
-        longitude: p.lng,
-      }));
+      setRegion((prev) => ({ ...prev, latitude: p.lat, longitude: p.lng }));
     })();
   }, [startTextDebounced]);
 
-  // ===== 3) user gõ endText -> geocode -> update end coord + map center =====
   React.useEffect(() => {
     (async () => {
       if (Platform.OS === "web") return;
@@ -238,31 +198,20 @@ export default function HomePage() {
       if (!p) return;
 
       setEnd(p);
-      setRegion((prev) => ({
-        ...prev,
-        latitude: p.lat,
-        longitude: p.lng,
-      }));
+      setRegion((prev) => ({ ...prev, latitude: p.lat, longitude: p.lng }));
     })();
   }, [endTextDebounced]);
 
-  // ===== 4) chạm map chọn điểm -> update input (reverse) + update region =====
   const onPickFromMap = React.useCallback(
     async (p: LatLng) => {
-      setRegion((prev) => ({
-        ...prev,
-        latitude: p.lat,
-        longitude: p.lng,
-      }));
+      setRegion((prev) => ({ ...prev, latitude: p.lat, longitude: p.lng }));
 
       if (picking === "start") {
         setStart(p);
-        const text = await reverseToText(p);
-        setStartText(text);
+        setStartText(await reverseToText(p));
       } else {
         setEnd(p);
-        const text = await reverseToText(p);
-        setEndText(text);
+        setEndText(await reverseToText(p));
       }
     },
     [picking]
@@ -272,10 +221,7 @@ export default function HomePage() {
     const s = startText.trim();
     const e = endText.trim();
 
-    if (!s || !e) {
-      Alert.alert("Thiếu thông tin", "Vui lòng nhập đủ điểm đi và điểm đến.");
-      return;
-    }
+    if (!s || !e) return Alert.alert("Thiếu thông tin", "Vui lòng nhập đủ điểm đi và điểm đến.");
 
     router.push({
       pathname: "/(tabs)/routes",
@@ -283,7 +229,6 @@ export default function HomePage() {
     } as any);
   };
 
-  // ===== Map block: native vs web fallback =====
   const MapBlock = Platform.select({
     web: () => (
       <View style={styles.webMapFallback}>
@@ -298,7 +243,8 @@ export default function HomePage() {
   });
 
   return (
-    <Screen>
+    // ✅ QUAN TRỌNG: bật scroll
+    <Screen scroll>
       <View style={styles.header}>
         <AppText style={styles.h1}>Tiện Chuyến</AppText>
         <AppText style={styles.sub}>Chạm map hoặc nhập địa chỉ để chọn điểm</AppText>
@@ -310,31 +256,18 @@ export default function HomePage() {
         ) : null}
       </View>
 
-      {/* MAP */}
       <View style={styles.mapWrap}>{MapBlock?.()}</View>
 
-      {/* PICK MODE */}
       <View style={styles.pickRow}>
-        <Pressable
-          onPress={() => setPicking("start")}
-          style={[styles.pickBtn, picking === "start" ? styles.pickBtnActive : null]}
-        >
-          <AppText style={[styles.pickText, picking === "start" ? styles.pickTextActive : null]}>
-            Chọn điểm đi
-          </AppText>
+        <Pressable onPress={() => setPicking("start")} style={[styles.pickBtn, picking === "start" && styles.pickBtnActive]}>
+          <AppText style={[styles.pickText, picking === "start" && styles.pickTextActive]}>Chọn điểm đi</AppText>
         </Pressable>
 
-        <Pressable
-          onPress={() => setPicking("end")}
-          style={[styles.pickBtn, picking === "end" ? styles.pickBtnActive : null]}
-        >
-          <AppText style={[styles.pickText, picking === "end" ? styles.pickTextActive : null]}>
-            Chọn điểm đến
-          </AppText>
+        <Pressable onPress={() => setPicking("end")} style={[styles.pickBtn, picking === "end" && styles.pickBtnActive]}>
+          <AppText style={[styles.pickText, picking === "end" && styles.pickTextActive]}>Chọn điểm đến</AppText>
         </Pressable>
       </View>
 
-      {/* INPUTS (gõ tay được) */}
       <View style={styles.form}>
         <AppText style={styles.sectionTitle}>Điểm đi / Điểm đến</AppText>
 
@@ -344,6 +277,7 @@ export default function HomePage() {
           placeholder="Điểm đi (địa chỉ hoặc lat,lng)"
           style={styles.input}
           autoCapitalize="none"
+          onFocus={() => setPicking("start")}
         />
         <TextInput
           value={endText}
@@ -351,6 +285,7 @@ export default function HomePage() {
           placeholder="Điểm đến (địa chỉ hoặc lat,lng)"
           style={styles.input}
           autoCapitalize="none"
+          onFocus={() => setPicking("end")}
         />
 
         <Pressable
@@ -386,11 +321,13 @@ export default function HomePage() {
           <AppText style={styles.listSub}>Tạo yêu cầu hoặc tìm tuyến để bắt đầu.</AppText>
         </View>
       </View>
+
+      {/* ✅ thêm khoảng trống cuối để scroll mượt */}
+      <View style={{ height: 20 }} />
     </Screen>
   );
 }
 
-// ========= styles =========
 const styles = StyleSheet.create({
   header: { gap: 6, paddingBottom: 12 },
   h1: { fontSize: 26, fontWeight: "700" },
@@ -407,12 +344,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.card,
   },
 
-  webMapFallback: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 14,
-  },
+  webMapFallback: { flex: 1, alignItems: "center", justifyContent: "center", padding: 14 },
   webMapTitle: { fontSize: 18, fontWeight: "900" },
   webMapSub: { marginTop: 6, opacity: 0.7, textAlign: "center" },
   webMapCoord: { marginTop: 4, fontWeight: "800" },
