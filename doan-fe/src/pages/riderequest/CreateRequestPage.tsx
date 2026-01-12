@@ -44,7 +44,7 @@ export default function CreateRequestPage() {
         setLoading(true);
         try {
             await rideRequestApi.create(body);
-            router.replace("/(tabs)/requests" as any);
+            router.replace("/(tabs)/routes" as any);
         } catch (e: any) {
             setError(e?.message ?? "Tạo yêu cầu thất bại");
         } finally {

@@ -24,7 +24,7 @@ const ENDPOINT = {
 };
 
 export const routeApi = {
-        // GET /api/routes :contentReference[oaicite:11]{index=11}
+
   async fetchAll(): Promise<RouteDTO[]> {
     const res = await getJson<RoutesResponse>(ENDPOINT.all);
     return res?.data ?? [];
