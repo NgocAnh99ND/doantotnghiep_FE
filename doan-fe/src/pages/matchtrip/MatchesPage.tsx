@@ -7,6 +7,9 @@ import { matchTripApi } from "@/api/matchtrip/matchtrip.api";
 import { useFetchAcceptedMatchesByDriver, useFetchFinishedMatchesByDriver } from "@/api/matchtrip/useFetch";
 import { useFocusEffect } from "expo-router";
 
+// ✅ NEW: driver api
+import { driverApi } from "@/api/driver";
+
 /** =========================
  * Helpers
  ========================= */
@@ -50,25 +53,71 @@ export default function MatchesPage() {
   return <DriverMatchesView driverId={user.user_id} />;
 }
 
+/** =========================
+ * Passenger View
+ * ✅ Enrich match list: match -> route(detail) -> driver(detail)
+ * ========================= */
 function PassengerMatchesView({ passengerId }: { passengerId: number }) {
   const [data, setData] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  // cache để tránh gọi API lặp
+  const routeCacheRef = React.useRef<Map<number, any>>(new Map());
+  const driverCacheRef = React.useRef<Map<number, any>>(new Map());
+
   const refetch = React.useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
+      // 1) lấy list match (có route_id)
       const list = await matchTripApi.fetchByPassenger(passengerId);
-      setData(list ?? []);
+
+      // 2) enrich: lấy route detail + driver detail
+      const enriched = await Promise.all(
+        (list ?? []).map(async (m: any) => {
+          const routeId = Number(m?.route_id);
+          let route: any = null;
+
+          if (Number.isFinite(routeId)) {
+            if (routeCacheRef.current.has(routeId)) {
+              route = routeCacheRef.current.get(routeId);
+            } else {
+              // routeApi.fetchDetail trả RouteDTO
+              route = await routeApi.fetchDetail(routeId);
+              routeCacheRef.current.set(routeId, route);
+            }
+          }
+
+          const driverId = Number(route?.driver_id);
+          let driver: any = null;
+
+          if (Number.isFinite(driverId)) {
+            if (driverCacheRef.current.has(driverId)) {
+              driver = driverCacheRef.current.get(driverId);
+            } else {
+              driver = await driverApi.fetchDetail(driverId);
+              driverCacheRef.current.set(driverId, driver);
+            }
+          }
+
+          return { ...m, route, driver };
+        })
+      );
+
+      setData(enriched);
     } catch (e: any) {
+      setData([]);
       setError(e?.message ?? "Không tải được matches");
     } finally {
       setLoading(false);
     }
   }, [passengerId]);
 
-  React.useEffect(() => { refetch(); }, [refetch]);
+  React.useEffect(() => {
+    refetch();
+  }, [refetch]);
 
   // ✅ quay lại tab matches sẽ tự refresh (để thấy ACCEPTED sau khi driver accept)
   useFocusEffect(
@@ -95,25 +144,47 @@ function PassengerMatchesView({ passengerId }: { passengerId: number }) {
         onRefresh={refetch}
         contentContainerStyle={{ paddingTop: 12, gap: 10, paddingBottom: 20 }}
         ListEmptyComponent={!loading ? <AppText>Chưa có match nào.</AppText> : null}
-        renderItem={({ item }: any) => (
-          <View
-            style={{
-              padding: 14,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: "#e5e7eb",
-              backgroundColor: "#fff",
-              gap: 6,
-            }}
-          >
-            <AppText style={{ fontSize: 15, fontWeight: "900" }}>Match #{item.match_id}</AppText>
-            <AppText style={{ fontSize: 13, opacity: 0.85 }}>route_id: {item.route_id ?? "-"}</AppText>
-            <AppText style={{ fontSize: 13, opacity: 0.85 }}>ride_request_id: {item.ride_request_id ?? "-"}</AppText>
-            <AppText style={{ marginTop: 6, fontSize: 12, opacity: 0.85, fontWeight: "900" }}>
-              Status: {item.match_trip_status}
-            </AppText>
-          </View>
-        )}
+        renderItem={({ item }: any) => {
+          const r = item.route;
+          const d = item.driver;
+
+          return (
+            <View
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: "#e5e7eb",
+                backgroundColor: "#fff",
+                gap: 6,
+              }}
+            >
+              <AppText style={{ fontSize: 15, fontWeight: "900" }}>Match #{item.match_id}</AppText>
+
+              {/* ✅ NEW: hiển thị driver thay vì route_id */}
+              <AppText style={{ fontSize: 13, opacity: 0.85 }}>
+                Tài xế: {d?.user_name ?? "-"}
+              </AppText>
+               <AppText style={{ fontSize: 13, opacity: 0.85 }}>
+                SĐT: {d?.phone ?? "-"}
+              </AppText>
+               <AppText style={{ fontSize: 13, opacity: 0.85 }}>
+                Rating: {d?.rating ?? "-"}
+              </AppText>
+
+              {/* ✅ hiển thị tuyến */}
+              <AppText style={{ fontSize: 13, opacity: 0.85 }}>
+                Tuyến: {r?.start_location ?? "-"} → {r?.end_location ?? "-"} 
+              </AppText>
+               <AppText style={{ fontSize: 13, opacity: 0.85 }}>
+               Thời gian: {r?.time ?? "-"}
+              </AppText>
+              <AppText style={{ marginTop: 6, fontSize: 12, opacity: 0.85, fontWeight: "900" }}>
+                Status: {item.match_trip_status}
+              </AppText>
+            </View>
+          );
+        }}
       />
     </Screen>
   );
@@ -197,17 +268,11 @@ function DriverMatchesView({ driverId }: { driverId: number }) {
             />
 
             <View style={styles.tabsRow}>
-              <Pressable
-                onPress={() => setTab("ACCEPTED")}
-                style={[styles.tabBtn, tab === "ACCEPTED" && styles.tabBtnActive]}
-              >
+              <Pressable onPress={() => setTab("ACCEPTED")} style={[styles.tabBtn, tab === "ACCEPTED" && styles.tabBtnActive]}>
                 <AppText style={[styles.tabText, tab === "ACCEPTED" && styles.tabTextActive]}>Đang chạy</AppText>
               </Pressable>
 
-              <Pressable
-                onPress={() => setTab("FINISHED")}
-                style={[styles.tabBtn, tab === "FINISHED" && styles.tabBtnActive]}
-              >
+              <Pressable onPress={() => setTab("FINISHED")} style={[styles.tabBtn, tab === "FINISHED" && styles.tabBtnActive]}>
                 <AppText style={[styles.tabText, tab === "FINISHED" && styles.tabTextActive]}>Đã xong</AppText>
               </Pressable>
             </View>
@@ -226,7 +291,6 @@ function DriverMatchesView({ driverId }: { driverId: number }) {
         }
         ListEmptyComponent={!loading ? <AppText>Chưa có chuyến nào.</AppText> : null}
         renderItem={({ item }: any) => {
-          // item luôn có cấu trúc match + route + ride_request (giống tab ACCEPTED bạn đang dùng)
           const r = item.route;
           const rr = item.ride_request;
 
@@ -254,7 +318,6 @@ function DriverMatchesView({ driverId }: { driverId: number }) {
 
               <AppText style={styles.badge}>Match status: {item.match_trip_status}</AppText>
 
-              {/* ✅ Chỉ hiện nút finish ở tab ACCEPTED */}
               {tab === "ACCEPTED" ? (
                 <Pressable style={styles.finishBtn} onPress={() => onFinish(item.match_id)}>
                   <AppText style={styles.finishText}>Kết thúc chuyến đi</AppText>
@@ -339,12 +402,7 @@ function CreateRouteBox({
       <AppText style={styles.h2}>Đăng tuyến xe</AppText>
 
       <View style={{ gap: 10 }}>
-        <TextInput
-          value={startLocation}
-          onChangeText={setStartLocation}
-          placeholder="Điểm đi (start_location)"
-          style={styles.input}
-        />
+        <TextInput value={startLocation} onChangeText={setStartLocation} placeholder="Điểm đi (start_location)" style={styles.input} />
         <TextInput value={endLocation} onChangeText={setEndLocation} placeholder="Điểm đến (end_location)" style={styles.input} />
         <TextInput value={time} onChangeText={setTime} placeholder='Thời gian (vd "2025-01-10 08:00")' style={styles.input} />
 
