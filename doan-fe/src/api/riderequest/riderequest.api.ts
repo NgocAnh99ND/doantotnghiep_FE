@@ -4,7 +4,6 @@ import type {
   CancelRideRequestBody,
   CreateRideRequestBody,
   RideRequestCancelResponse,
-  RideRequestCreateResponse,
   RideRequestDetailResponse,
   RideRequestDTO,
   RideRequestsByPassengerResponse,
@@ -24,14 +23,44 @@ function ensureSuccess(res: any) {
   return res;
 }
 
+/**
+ * BE của bạn đang trả:
+ * { success: true, message: "...", ride_request_id: 7 }
+ * Một số BE khác có thể trả:
+ * { success: true, data: { ride_request_id: 7, ... } }
+ */
+function extractRideRequestId(res: any): number | null {
+  const id1 = res?.data?.ride_request_id;
+  if (Number.isFinite(id1)) return Number(id1);
+
+  const id2 = res?.ride_request_id;
+  if (Number.isFinite(id2)) return Number(id2);
+
+  const id3 = res?.data?.id;
+  if (Number.isFinite(id3)) return Number(id3);
+
+  return null;
+}
+
 export const rideRequestApi = {
-  // ✅ POST /api/ride-request/create => cần trả về request vừa tạo (có ride_request_id)
+  // ✅ POST /api/ride-request/create
+  // Trả về tối thiểu RideRequestDTO có ride_request_id để match-trip dùng tiếp
   async create(body: CreateRideRequestBody): Promise<RideRequestDTO> {
-    const res = ensureSuccess(await postJson<RideRequestCreateResponse>(ENDPOINT.create, body));
-    if (!("data" in res) || !res.data?.ride_request_id) {
-      throw new Error("BE không trả data ride_request (thiếu ride_request_id)");
+    const res = ensureSuccess(await postJson<any>(ENDPOINT.create, body));
+
+    const rideRequestId = extractRideRequestId(res);
+    if (!rideRequestId) {
+      // debug nhẹ để bạn biết BE trả gì
+      throw new Error("BE không trả ride_request_id (response không đúng format)");
     }
-    return res.data;
+
+    // Nếu BE có trả full data thì ưu tiên trả full
+    if (res?.data && typeof res.data === "object") {
+      return { ...res.data, ride_request_id: rideRequestId } as RideRequestDTO;
+    }
+
+    // BE chỉ trả ride_request_id -> trả DTO tối thiểu
+    return { ride_request_id: rideRequestId } as RideRequestDTO;
   },
 
   async fetchDetail(ride_request_id: number): Promise<RideRequestDTO | null> {

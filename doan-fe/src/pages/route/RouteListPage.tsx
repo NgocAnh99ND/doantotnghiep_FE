@@ -8,6 +8,22 @@ import { useAuth } from "@/store/authStore";
 import { rideRequestApi } from "@/api/riderequest";
 import { matchTripApi } from "@/api/matchtrip/matchtrip.api";
 
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function nowToBeDateTimeString() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = pad2(d.getMonth() + 1);
+  const dd = pad2(d.getDate());
+  const hh = pad2(d.getHours());
+  const mi = pad2(d.getMinutes());
+  const ss = pad2(d.getSeconds());
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
+
+
 function toNumParam(v: any): number | null {
   const n = typeof v === "string" ? Number(v) : v;
   return Number.isFinite(n) ? n : null;
@@ -146,7 +162,8 @@ export default function RouteListPage() {
     if (!passengerId) return Alert.alert("Thiếu dữ liệu", "Thiếu passenger_id. Hãy đăng xuất và đăng nhập lại.");
 
     const pax = Number.isFinite(passengers) && passengers > 0 ? passengers : 1;
-    const timeValue = time || new Date().toISOString();
+    const timeValue = time?.trim() || nowToBeDateTimeString();
+
 
     Alert.alert(
       "Xác nhận đặt xe",
