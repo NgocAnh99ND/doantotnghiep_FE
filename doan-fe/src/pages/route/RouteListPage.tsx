@@ -162,7 +162,12 @@ export default function RouteListPage() {
               const rr = await rideRequestApi.create({
                 passenger_id: passengerId,
                 pick_up: start,
+                pick_up_lat: a_lat as number,
+                pick_up_lng: a_lng as number,
                 drop_off: end,
+                drop_off_lat: b_lat as number,
+                drop_off_lng: b_lng as number,
+
                 time: timeValue,
                 passengers: pax,
               });

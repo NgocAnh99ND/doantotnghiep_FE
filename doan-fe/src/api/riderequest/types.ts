@@ -13,11 +13,15 @@ export type RideRequestDTO = {
 };
 
 export type CreateRideRequestBody = {
-    passenger_id: number;
-    pick_up: string;
-    drop_off: string;
-    time: string;
-    passengers: number;
+   passenger_id: number;
+  pick_up: string;
+  pick_up_lat: number;
+  pick_up_lng: number;
+  drop_off: string;
+  drop_off_lat: number;
+  drop_off_lng: number;
+  time: string;
+  passengers: number;
 };
 
 export type CancelRideRequestBody = { ride_request_id: number };
