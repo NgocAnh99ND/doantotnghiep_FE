@@ -423,19 +423,34 @@ export default function HomePage() {
     }
   };
 
-  const onSearch = () => {
-    const s = startText.trim();
-    const e = endText.trim();
+const onSearch = () => {
+  const s = startText.trim();
+  const e = endText.trim();
 
-    if (!s || !e) {
-      return Alert.alert("Thiếu thông tin", "Vui lòng nhập đủ điểm đi và điểm đến.");
-    }
+  if (!s || !e) {
+    return Alert.alert("Thiếu thông tin", "Vui lòng nhập đủ điểm đi và điểm đến.");
+  }
 
-    router.push({
-      pathname: "/(tabs)/routes",
-      params: { start: s, end: e },
-    } as any);
-  };
+  // ✅ nếu đã có pin start/end thì gửi kèm toạ độ
+  const a_lat = start?.lat;
+  const a_lng = start?.lng;
+  const b_lat = end?.lat;
+  const b_lng = end?.lng;
+
+  router.push({
+    pathname: "/(tabs)/routes",
+    params: {
+      start: s,
+      end: e,
+      ...(Number.isFinite(a_lat as any) ? { a_lat: String(a_lat) } : {}),
+      ...(Number.isFinite(a_lng as any) ? { a_lng: String(a_lng) } : {}),
+      ...(Number.isFinite(b_lat as any) ? { b_lat: String(b_lat) } : {}),
+      ...(Number.isFinite(b_lng as any) ? { b_lng: String(b_lng) } : {}),
+    },
+  } as any);
+};
+
+
 
   const MapBlock = Platform.select({
     web: () => (

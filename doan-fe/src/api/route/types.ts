@@ -1,6 +1,6 @@
-// Types khớp field BE đang đọc/ghi: route_id, route_status, start_location... :contentReference[oaicite:5]{index=5}
+// Types khớp field BE đang đọc/ghi: route_id, route_status, start_location...
 
-export type RouteStatus = string; // nếu BE có enum thì bạn có thể thay bằng union
+export type RouteStatus = string;
 
 export type RouteDTO = {
   route_id: number;
@@ -13,7 +13,16 @@ export type RouteDTO = {
   route_status?: RouteStatus;
 };
 
-// body cho POST /api/route/create :contentReference[oaicite:6]{index=6}
+// ✅ params cho GET /api/routes/find-by-ab
+export type FindByABParams = {
+  start: string;
+  end: string;
+  a_lat: number;
+  a_lng: number;
+  b_lat: number;
+  b_lng: number;
+};
+
 export type CreateRouteBody = {
   driver_id: number;
   start_location: string;
@@ -23,7 +32,6 @@ export type CreateRouteBody = {
   price: number;
 };
 
-// body cho PUT /api/route/update :contentReference[oaicite:7]{index=7}
 export type UpdateRouteBody = {
   route_id: number;
   start_location: string;
@@ -33,7 +41,6 @@ export type UpdateRouteBody = {
   price: number;
 };
 
-// body cho PUT /api/route/change-status :contentReference[oaicite:8]{index=8}
 export type ChangeRouteStatusBody = {
   route_id: number;
   route_status: RouteStatus;
@@ -43,26 +50,31 @@ export type RoutesResponse = {
   success: boolean;
   total: number;
   data: RouteDTO[];
+  message?: string; // ✅ optional cho dễ debug nếu BE trả
 };
 
 export type RouteDetailResponse = {
   success: boolean;
   data: RouteDTO;
+  message?: string;
 };
 
 export type CreateRouteResponse = {
   success: boolean;
-  data: RouteDTO; // hoặc route_id / message tùy BE trả
+  data: RouteDTO;
+  message?: string;
 };
 
 export type UpdateRouteResponse = {
   success: boolean;
   data: RouteDTO;
+  message?: string;
 };
 
 export type ChangeRouteStatusResponse = {
   success: boolean;
   data: RouteDTO;
+  message?: string;
 };
 
 export type MessageResponse =
@@ -79,4 +91,3 @@ export type RouteItem = {
   price: number;
   route_status: string;
 };
-
