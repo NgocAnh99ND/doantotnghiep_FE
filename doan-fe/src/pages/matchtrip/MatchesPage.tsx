@@ -347,15 +347,15 @@ function CreateRouteBox({
   const [startLocation, setStartLocation] = React.useState("");
   const [endLocation, setEndLocation] = React.useState("");
   const [time, setTime] = React.useState("");
-  const [seats, setSeats] = React.useState("4");
-  const [priceRaw, setPriceRaw] = React.useState("150000");
+  const [seats, setSeats] = React.useState("");
+  const [priceRaw, setPriceRaw] = React.useState("");
 
   const reset = () => {
     setStartLocation("");
     setEndLocation("");
     setTime("");
-    setSeats("4");
-    setPriceRaw("150000");
+    setSeats("");
+    setPriceRaw("");
   };
 
   const submit = async () => {
@@ -402,15 +402,16 @@ function CreateRouteBox({
       <AppText style={styles.h2}>Đăng tuyến xe</AppText>
 
       <View style={{ gap: 10 }}>
-        <TextInput value={startLocation} onChangeText={setStartLocation} placeholder="Điểm đi (start_location)" style={styles.input} />
-        <TextInput value={endLocation} onChangeText={setEndLocation} placeholder="Điểm đến (end_location)" style={styles.input} />
-        <TextInput value={time} onChangeText={setTime} placeholder='Thời gian (vd "2025-01-10 08:00")' style={styles.input} />
+        <TextInput value={startLocation} onChangeText={setStartLocation} placeholder="Điểm đi (start_location)" style={styles.input} placeholderTextColor="#9ca3af"/>
+        <TextInput value={endLocation} onChangeText={setEndLocation} placeholder="Điểm đến (end_location)" style={styles.input} placeholderTextColor="#9ca3af"/>
+        <TextInput value={time} onChangeText={setTime} placeholder="Thời gian (vd 2025-01-10 08:00)" style={styles.input} placeholderTextColor="#9ca3af"/>
 
         <View style={{ flexDirection: "row", gap: 10 }}>
           <TextInput
             value={seats}
             onChangeText={(t) => setSeats(toDigits(t))}
             placeholder="Số ghế"
+            placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
             style={[styles.input, { flex: 1, minWidth: 0 }]}
           />
@@ -419,6 +420,7 @@ function CreateRouteBox({
             value={formatWithDots(priceRaw)}
             onChangeText={(t) => setPriceRaw(toDigits(t))}
             placeholder="Giá"
+            placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
             style={[styles.input, { flex: 1, minWidth: 0 }]}
           />
