@@ -38,6 +38,12 @@ const FALLBACK_REGION: Region = {
   longitudeDelta: 0.05,
 };
 
+// ✅ Base URL cho API backend
+const API_BASE =
+  Platform.OS === "android"
+    ? "http://10.0.2.2:8080" // Android emulator
+    : "http://192.168.0.100:8080"; // iOS simulator / web dev
+
 async function ensureLocationPermission(): Promise<{
   ok: boolean;
   canAskAgain: boolean;
@@ -89,7 +95,6 @@ async function reverseToText(p: LatLng): Promise<string> {
     const a = res?.[0];
     if (!a) return fmtLatLng(p);
 
-    // ⚠️ expo-location type có district (không có subdistrict)
     const parts = [
       a.name,
       a.street,
@@ -135,10 +140,7 @@ function useDebouncedValue<T>(value: T, ms: number) {
 
 /** =========================
  * Autocomplete (Nominatim OSM)
- * =========================
- * - free, không cần API key
- * - có rate-limit => debounce + limit
- */
+ * ========================= */
 async function fetchPlaceSuggestions(
   query: string,
   signal?: AbortSignal
@@ -146,8 +148,6 @@ async function fetchPlaceSuggestions(
   const q = query.trim();
   if (q.length < 2) return [];
 
-  // ưu tiên Việt Nam: countrycodes=vn
-  // limit ít để tránh spam
   const url =
     `https://nominatim.openstreetmap.org/search?` +
     `format=json&addressdetails=1&limit=6&countrycodes=vn&accept-language=vi&` +
@@ -158,8 +158,6 @@ async function fetchPlaceSuggestions(
     signal,
     headers: {
       Accept: "application/json",
-      // Một số môi trường cần User-Agent/Referer; Expo thường ok.
-      // Nếu gặp bị chặn, bạn sẽ cần proxy từ BE.
     },
   });
 
@@ -173,12 +171,7 @@ async function fetchPlaceSuggestions(
       lat: Number(it.lat),
       lng: Number(it.lon),
     }))
-    .filter(
-      (x) =>
-        x.label &&
-        Number.isFinite(x.lat) &&
-        Number.isFinite(x.lng)
-    );
+    .filter((x) => x.label && Number.isFinite(x.lat) && Number.isFinite(x.lng));
 }
 
 function NativeMap({
@@ -186,22 +179,37 @@ function NativeMap({
   start,
   end,
   onPick,
+  routeLine,
 }: {
   region: Region;
   start: LatLng | null;
   end: LatLng | null;
   onPick: (p: LatLng) => void;
+  routeLine: { latitude: number; longitude: number }[];
 }) {
   const Maps = React.useMemo(() => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     return require("react-native-maps") as typeof import("react-native-maps");
   }, []);
 
   const MapView = Maps.default;
   const Marker = Maps.Marker;
+  const Polyline = Maps.Polyline;
+
+  const mapRef = React.useRef<any>(null);
+
+  React.useEffect(() => {
+    if (!mapRef.current) return;
+    if (!routeLine || routeLine.length < 2) return;
+
+    mapRef.current.fitToCoordinates(routeLine, {
+      edgePadding: { top: 80, right: 80, bottom: 80, left: 80 },
+      animated: true,
+    });
+  }, [routeLine]);
 
   return (
     <MapView
+      ref={mapRef}
       style={{ flex: 1 }}
       region={region}
       onPress={(e: any) => {
@@ -216,11 +224,21 @@ function NativeMap({
           title="Start"
         />
       ) : null}
+
       {end ? (
         <Marker
           coordinate={{ latitude: end.lat, longitude: end.lng }}
           title="End"
         />
+      ) : null}
+
+      {/* ✅ Line xanh chỉ đường A→B */}
+      {routeLine.length >= 2 ? (
+        <>
+          {/* Viền trắng (đẹp như app xe) */}
+          <Polyline coordinates={routeLine} strokeWidth={8} strokeColor="#FFFFFF" />
+          <Polyline coordinates={routeLine} strokeWidth={5} strokeColor="#1E88E5" />
+        </>
       ) : null}
     </MapView>
   );
@@ -239,7 +257,6 @@ export default function HomePage() {
 
   const [picking, setPicking] = React.useState<"start" | "end">("start");
 
-  // focus input nào thì show suggestion của input đó
   const [focused, setFocused] = React.useState<"start" | "end" | null>(null);
 
   const [region, setRegion] = React.useState<Region>(FALLBACK_REGION);
@@ -251,6 +268,45 @@ export default function HomePage() {
 
   const startTextDebounced = useDebouncedValue(startText, 500);
   const endTextDebounced = useDebouncedValue(endText, 500);
+
+  // ✅ polyline state
+  const [routeLine, setRouteLine] = React.useState<
+    { latitude: number; longitude: number }[]
+  >([]);
+  const [routeLoading, setRouteLoading] = React.useState(false);
+
+  // ✅ fetch line A→B bằng backend GraphHopper
+  const fetchRouteLine = React.useCallback(async (a: LatLng, b: LatLng) => {
+    setRouteLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/map/route`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ points: [a, b] }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setRouteLine([]);
+        return;
+      }
+
+      const pts = (data.points ?? [])
+        .map((p: any) => ({
+          latitude: Number(p.lat),
+          longitude: Number(p.lng),
+        }))
+        .filter(
+          (x: any) => Number.isFinite(x.latitude) && Number.isFinite(x.longitude)
+        );
+
+      setRouteLine(pts);
+    } catch {
+      setRouteLine([]);
+    } finally {
+      setRouteLoading(false);
+    }
+  }, []);
 
   // =========================
   // 1) Init: current location -> set start
@@ -290,7 +346,7 @@ export default function HomePage() {
 
         const addr = await reverseToText(me);
         setStartText(addr);
-      } catch {}
+      } catch { }
     })();
   }, []);
 
@@ -333,18 +389,33 @@ export default function HomePage() {
     })();
   }, [endTextDebounced]);
 
+  // ✅ Auto vẽ line khi đủ start & end
+  React.useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    if (!start || !end) {
+      setRouteLine([]);
+      return;
+    }
+
+    fetchRouteLine(start, end);
+  }, [start?.lat, start?.lng, end?.lat, end?.lng, fetchRouteLine]);
+
   // =========================
   // 3) Autocomplete suggestions (Nominatim)
-  //    - only for the focused input
   // =========================
   React.useEffect(() => {
     if (Platform.OS === "web") return;
 
     const active = focused;
-    const query = active === "start" ? startTextDebounced : active === "end" ? endTextDebounced : "";
+    const query =
+      active === "start"
+        ? startTextDebounced
+        : active === "end"
+          ? endTextDebounced
+          : "";
     const trimmed = (query ?? "").trim();
 
-    // nếu không focus hoặc text quá ngắn => clear
     if (!active || trimmed.length < 2) {
       if (active === "start") setStartSug([]);
       if (active === "end") setEndSug([]);
@@ -359,7 +430,6 @@ export default function HomePage() {
       try {
         const list = await fetchPlaceSuggestions(trimmed, controller.signal);
 
-        // tránh gợi ý khi user nhập lat,lng
         if (isLatLngText(trimmed)) {
           if (active === "start") setStartSug([]);
           else setEndSug([]);
@@ -369,7 +439,6 @@ export default function HomePage() {
         if (active === "start") setStartSug(list);
         else setEndSug(list);
       } catch {
-        // ignore
       } finally {
         setSugLoading(false);
       }
@@ -423,46 +492,62 @@ export default function HomePage() {
     }
   };
 
-const onSearch = () => {
-  const s = startText.trim();
-  const e = endText.trim();
+  const onSearch = () => {
+    const s = startText.trim();
+    const e = endText.trim();
 
-  if (!s || !e) {
-    return Alert.alert("Thiếu thông tin", "Vui lòng nhập đủ điểm đi và điểm đến.");
-  }
+    if (!s || !e) {
+      return Alert.alert("Thiếu thông tin", "Vui lòng nhập đủ điểm đi và điểm đến.");
+    }
 
-  // ✅ nếu đã có pin start/end thì gửi kèm toạ độ
-  const a_lat = start?.lat;
-  const a_lng = start?.lng;
-  const b_lat = end?.lat;
-  const b_lng = end?.lng;
+    const a_lat = start?.lat;
+    const a_lng = start?.lng;
+    const b_lat = end?.lat;
+    const b_lng = end?.lng;
 
-  router.push({
-    pathname: "/(tabs)/routes",
-    params: {
-      start: s,
-      end: e,
-      ...(Number.isFinite(a_lat as any) ? { a_lat: String(a_lat) } : {}),
-      ...(Number.isFinite(a_lng as any) ? { a_lng: String(a_lng) } : {}),
-      ...(Number.isFinite(b_lat as any) ? { b_lat: String(b_lat) } : {}),
-      ...(Number.isFinite(b_lng as any) ? { b_lng: String(b_lng) } : {}),
-    },
-  } as any);
-};
-
-
+    router.push({
+      pathname: "/(tabs)/routes",
+      params: {
+        start: s,
+        end: e,
+        ...(Number.isFinite(a_lat as any) ? { a_lat: String(a_lat) } : {}),
+        ...(Number.isFinite(a_lng as any) ? { a_lng: String(a_lng) } : {}),
+        ...(Number.isFinite(b_lat as any) ? { b_lat: String(b_lat) } : {}),
+        ...(Number.isFinite(b_lng as any) ? { b_lng: String(b_lng) } : {}),
+      },
+    } as any);
+  };
 
   const MapBlock = Platform.select({
     web: () => (
       <View style={styles.webMapFallback}>
         <AppText style={styles.webMapTitle}>Map (Web fallback)</AppText>
-        <AppText style={styles.webMapSub}>Web không hỗ trợ react-native-maps.</AppText>
+        <AppText style={styles.webMapSub}>
+          Web không hỗ trợ react-native-maps.
+        </AppText>
         <View style={{ height: 10 }} />
-        <AppText style={styles.webMapCoord}>Start: {start ? fmtLatLng(start) : "-"}</AppText>
-        <AppText style={styles.webMapCoord}>End: {end ? fmtLatLng(end) : "-"}</AppText>
+        <AppText style={styles.webMapCoord}>
+          Start: {start ? fmtLatLng(start) : "-"}
+        </AppText>
+        <AppText style={styles.webMapCoord}>
+          End: {end ? fmtLatLng(end) : "-"}
+        </AppText>
+        {routeLoading ? (
+          <AppText style={{ marginTop: 8, fontWeight: "800" }}>
+            Đang vẽ đường…
+          </AppText>
+        ) : null}
       </View>
     ),
-    default: () => <NativeMap region={region} start={start} end={end} onPick={onPickFromMap} />,
+    default: () => (
+      <NativeMap
+        region={region}
+        start={start}
+        end={end}
+        onPick={onPickFromMap}
+        routeLine={routeLine}
+      />
+    ),
   });
 
   const showStartSug = focused === "start" && (startSug.length > 0 || sugLoading);
@@ -472,7 +557,9 @@ const onSearch = () => {
     <Screen scroll>
       <View style={styles.header}>
         <AppText style={styles.h1}>Tiện Chuyến</AppText>
-        <AppText style={styles.sub}>Chạm map hoặc nhập địa chỉ để chọn điểm</AppText>
+        <AppText style={styles.sub}>
+          Chạm map hoặc nhập địa chỉ để chọn điểm
+        </AppText>
 
         {locDenied ? (
           <AppText style={styles.locWarn}>
@@ -483,12 +570,21 @@ const onSearch = () => {
 
       <View style={styles.mapWrap}>{MapBlock?.()}</View>
 
+      {/* Optional: hiển thị trạng thái đang vẽ */}
+      {routeLoading ? (
+        <AppText style={{ marginTop: 8, fontWeight: "800", opacity: 0.8 }}>
+          Đang vẽ đường đi…
+        </AppText>
+      ) : null}
+
       <View style={styles.pickRow}>
         <Pressable
           onPress={() => setPicking("start")}
           style={[styles.pickBtn, picking === "start" && styles.pickBtnActive]}
         >
-          <AppText style={[styles.pickText, picking === "start" && styles.pickTextActive]}>
+          <AppText
+            style={[styles.pickText, picking === "start" && styles.pickTextActive]}
+          >
             Chọn điểm đi
           </AppText>
         </Pressable>
@@ -497,7 +593,9 @@ const onSearch = () => {
           onPress={() => setPicking("end")}
           style={[styles.pickBtn, picking === "end" && styles.pickBtnActive]}
         >
-          <AppText style={[styles.pickText, picking === "end" && styles.pickTextActive]}>
+          <AppText
+            style={[styles.pickText, picking === "end" && styles.pickTextActive]}
+          >
             Chọn điểm đến
           </AppText>
         </Pressable>
@@ -513,6 +611,7 @@ const onSearch = () => {
             onChangeText={(t) => {
               setStartText(t);
               setPicking("start");
+              setRouteLine([]); // clear line khi gõ lại
             }}
             placeholder="Điểm đi (vd: Lệ Chi, Gia Lâm...)"
             style={styles.input}
@@ -522,8 +621,10 @@ const onSearch = () => {
               setPicking("start");
             }}
             onBlur={() => {
-              // delay nhỏ để kịp tap item trong dropdown
-              setTimeout(() => setFocused((prev) => (prev === "start" ? null : prev)), 150);
+              setTimeout(
+                () => setFocused((prev) => (prev === "start" ? null : prev)),
+                150
+              );
             }}
           />
 
@@ -538,7 +639,10 @@ const onSearch = () => {
                 data={startSug}
                 keyExtractor={(it) => it.id}
                 renderItem={({ item }) => (
-                  <Pressable onPress={() => applySuggestion("start", item)} style={styles.sugItem}>
+                  <Pressable
+                    onPress={() => applySuggestion("start", item)}
+                    style={styles.sugItem}
+                  >
                     <AppText numberOfLines={2} style={styles.sugText}>
                       {item.label}
                     </AppText>
@@ -558,6 +662,7 @@ const onSearch = () => {
             onChangeText={(t) => {
               setEndText(t);
               setPicking("end");
+              setRouteLine([]); // clear line khi gõ lại
             }}
             placeholder="Điểm đến (vd: Lệ Chi...)"
             style={styles.input}
@@ -567,7 +672,10 @@ const onSearch = () => {
               setPicking("end");
             }}
             onBlur={() => {
-              setTimeout(() => setFocused((prev) => (prev === "end" ? null : prev)), 150);
+              setTimeout(
+                () => setFocused((prev) => (prev === "end" ? null : prev)),
+                150
+              );
             }}
           />
 
@@ -582,7 +690,10 @@ const onSearch = () => {
                 data={endSug}
                 keyExtractor={(it) => it.id}
                 renderItem={({ item }) => (
-                  <Pressable onPress={() => applySuggestion("end", item)} style={styles.sugItem}>
+                  <Pressable
+                    onPress={() => applySuggestion("end", item)}
+                    style={styles.sugItem}
+                  >
                     <AppText numberOfLines={2} style={styles.sugText}>
                       {item.label}
                     </AppText>
@@ -625,7 +736,9 @@ const onSearch = () => {
         <AppText style={styles.sectionTitle}>Hoạt động gần đây</AppText>
         <View style={styles.listItem}>
           <AppText style={styles.listTitle}>Bạn chưa có hoạt động</AppText>
-          <AppText style={styles.listSub}>Tạo yêu cầu hoặc tìm tuyến để bắt đầu.</AppText>
+          <AppText style={styles.listSub}>
+            Tạo yêu cầu hoặc tìm tuyến để bắt đầu.
+          </AppText>
         </View>
       </View>
 
@@ -650,7 +763,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.card,
   },
 
-  webMapFallback: { flex: 1, alignItems: "center", justifyContent: "center", padding: 14 },
+  webMapFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 14,
+  },
   webMapTitle: { fontSize: 18, fontWeight: "900" },
   webMapSub: { marginTop: 6, opacity: 0.7, textAlign: "center" },
   webMapCoord: { marginTop: 4, fontWeight: "800" },
@@ -665,7 +783,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.card,
     alignItems: "center",
   },
-  pickBtnActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  pickBtnActive: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
   pickText: { fontWeight: "800", color: theme.colors.text },
   pickTextActive: { color: theme.colors.primaryText },
 
