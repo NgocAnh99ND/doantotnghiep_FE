@@ -11,19 +11,26 @@ import {
   Platform,
   Keyboard,
   TouchableWithoutFeedback,
+  Linking,
 } from "react-native";
 import { useAuth } from "@/store/authStore";
 import { AppText, Divider, Screen, Loading } from "@/components";
 import { routeApi } from "@/api/route";
 import { matchTripApi } from "@/api/matchtrip/matchtrip.api";
-import { useFetchAcceptedMatchesByDriver, useFetchFinishedMatchesByDriver } from "@/api/matchtrip/useFetch";
+import {
+  useFetchAcceptedMatchesByDriver,
+  useFetchFinishedMatchesByDriver,
+} from "@/api/matchtrip/useFetch";
 import { useFocusEffect } from "expo-router";
 
 // ✅ NEW: driver api
 import { driverApi } from "@/api/driver";
 
-// ✅ review api (bạn cần có api/review/review.api.ts export reviewApi)
+// ✅ review api
 import { reviewApi } from "@/api/review";
+
+// ✅ map + location
+import * as Location from "expo-location";
 
 /** =========================
  * Helpers
@@ -35,6 +42,236 @@ function formatWithDots(rawDigits: string) {
 }
 function toDigits(text: string) {
   return (text ?? "").replace(/\D/g, "");
+}
+
+/** =========================
+ * Map helpers (copy from HomePage)
+ ========================= */
+type LatLng = { lat: number; lng: number };
+type Region = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
+
+type PlaceSuggestion = {
+  id: string;
+  label: string;
+  lat: number;
+  lng: number;
+};
+
+const FALLBACK_REGION: Region = {
+  latitude: 10.8231,
+  longitude: 106.6297,
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
+};
+
+// ✅ Base URL cho API backend
+const API_BASE =
+  Platform.OS === "android"
+    ? "http://10.0.2.2:8080"
+    : "http://192.168.0.100:8080";
+
+async function ensureLocationPermission(): Promise<{
+  ok: boolean;
+  canAskAgain: boolean;
+}> {
+  if (Platform.OS === "web") return { ok: false, canAskAgain: true };
+
+  const cur = await Location.getForegroundPermissionsAsync();
+  if (cur.status === Location.PermissionStatus.GRANTED)
+    return { ok: true, canAskAgain: true };
+
+  const req = await Location.requestForegroundPermissionsAsync();
+  return {
+    ok: req.status === Location.PermissionStatus.GRANTED,
+    canAskAgain: !!req.canAskAgain,
+  };
+}
+
+async function getMyLocation(): Promise<LatLng | null> {
+  if (Platform.OS === "web") return null;
+  const pos = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced,
+  });
+  return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+}
+
+function fmtLatLng(p: LatLng) {
+  return `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+}
+
+function isLatLngText(text: string): LatLng | null {
+  const t = (text || "").trim();
+  const m = t.match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const lat = Number(m[1]);
+  const lng = Number(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
+async function reverseToText(p: LatLng): Promise<string> {
+  if (Platform.OS === "web") return fmtLatLng(p);
+
+  try {
+    const res = await Location.reverseGeocodeAsync({
+      latitude: p.lat,
+      longitude: p.lng,
+    });
+    const a = res?.[0];
+    if (!a) return fmtLatLng(p);
+
+    const parts = [
+      a.name,
+      a.street,
+      a.city,
+      a.district,
+      a.region,
+      a.country,
+    ].filter(Boolean);
+
+    const text = parts.join(", ").replace(/\s+/g, " ").trim();
+    return text || fmtLatLng(p);
+  } catch {
+    return fmtLatLng(p);
+  }
+}
+
+async function forwardGeocode(text: string): Promise<LatLng | null> {
+  if (Platform.OS === "web") return null;
+  const q = (text || "").trim();
+  if (!q) return null;
+
+  const parsed = isLatLngText(q);
+  if (parsed) return parsed;
+
+  try {
+    const res = await Location.geocodeAsync(q);
+    const first = res?.[0];
+    if (!first) return null;
+    return { lat: first.latitude, lng: first.longitude };
+  } catch {
+    return null;
+  }
+}
+
+function useDebouncedValue<T>(value: T, ms: number) {
+  const [v, setV] = React.useState(value);
+  React.useEffect(() => {
+    const id = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return v;
+}
+
+/** =========================
+ * Autocomplete (Nominatim OSM)
+ * ========================= */
+async function fetchPlaceSuggestions(
+  query: string,
+  signal?: AbortSignal
+): Promise<PlaceSuggestion[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+
+  const url =
+    `https://nominatim.openstreetmap.org/search?` +
+    `format=json&addressdetails=1&limit=6&countrycodes=vn&accept-language=vi&` +
+    `q=${encodeURIComponent(q)}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    signal,
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) return [];
+
+  const data = (await res.json()) as any[];
+  return (data ?? [])
+    .map((it) => ({
+      id: String(it.place_id ?? `${it.lat}-${it.lon}`),
+      label: String(it.display_name ?? "").trim(),
+      lat: Number(it.lat),
+      lng: Number(it.lon),
+    }))
+    .filter((x) => x.label && Number.isFinite(x.lat) && Number.isFinite(x.lng));
+}
+
+function NativeMap({
+  region,
+  start,
+  end,
+  onPick,
+  routeLine,
+}: {
+  region: Region;
+  start: LatLng | null;
+  end: LatLng | null;
+  onPick: (p: LatLng) => void;
+  routeLine: { latitude: number; longitude: number }[];
+}) {
+  const Maps = React.useMemo(() => {
+    return require("react-native-maps") as typeof import("react-native-maps");
+  }, []);
+
+  const MapView = Maps.default;
+  const Marker = Maps.Marker;
+  const Polyline = Maps.Polyline;
+
+  const mapRef = React.useRef<any>(null);
+
+  React.useEffect(() => {
+    if (!mapRef.current) return;
+    if (!routeLine || routeLine.length < 2) return;
+
+    mapRef.current.fitToCoordinates(routeLine, {
+      edgePadding: { top: 80, right: 80, bottom: 80, left: 80 },
+      animated: true,
+    });
+  }, [routeLine]);
+
+  return (
+    <MapView
+      ref={mapRef}
+      style={{ flex: 1 }}
+      region={region}
+      onPress={(e: any) => {
+        const c = e?.nativeEvent?.coordinate;
+        if (!c) return;
+        onPick({ lat: c.latitude, lng: c.longitude });
+      }}
+    >
+      {start ? (
+        <Marker
+          coordinate={{ latitude: start.lat, longitude: start.lng }}
+          title="Start"
+        />
+      ) : null}
+
+      {end ? (
+        <Marker
+          coordinate={{ latitude: end.lat, longitude: end.lng }}
+          title="End"
+        />
+      ) : null}
+
+      {/* ✅ Line xanh chỉ đường A→B */}
+      {routeLine.length >= 2 ? (
+        <>
+          <Polyline coordinates={routeLine} strokeWidth={8} strokeColor="#FFFFFF" />
+          <Polyline coordinates={routeLine} strokeWidth={5} strokeColor="#1E88E5" />
+        </>
+      ) : null}
+    </MapView>
+  );
 }
 
 /** =========================
@@ -162,7 +399,10 @@ function PassengerMatchesView({ passengerId }: { passengerId: number }) {
 
     // chỉ cho đánh giá khi FINISHED
     if (String(item?.match_trip_status).toUpperCase() !== "FINISHED") {
-      Alert.alert("Chưa thể đánh giá", "Chỉ đánh giá sau khi chuyến đã kết thúc (FINISHED).");
+      Alert.alert(
+        "Chưa thể đánh giá",
+        "Chỉ đánh giá sau khi chuyến đã kết thúc (FINISHED)."
+      );
       return;
     }
 
@@ -220,13 +460,17 @@ function PassengerMatchesView({ passengerId }: { passengerId: number }) {
   return (
     <Screen>
       <View style={{ gap: 6, paddingBottom: 8 }}>
-        <AppText style={{ fontSize: 20, fontWeight: "800" }}>Matches (Passenger)</AppText>
+        <AppText style={{ fontSize: 20, fontWeight: "800" }}>
+          Matches (Passenger)
+        </AppText>
       </View>
 
       <Divider />
 
       {loading ? <Loading /> : null}
-      {error ? <AppText style={{ marginTop: 10, color: "crimson" }}>{error}</AppText> : null}
+      {error ? (
+        <AppText style={{ marginTop: 10, color: "crimson" }}>{error}</AppText>
+      ) : null}
 
       <FlatList
         data={data}
@@ -234,19 +478,25 @@ function PassengerMatchesView({ passengerId }: { passengerId: number }) {
         refreshing={loading}
         onRefresh={refetch}
         contentContainerStyle={{ paddingTop: 12, gap: 10, paddingBottom: 20 }}
-        ListEmptyComponent={!loading ? <AppText>Chưa có match nào.</AppText> : null}
+        ListEmptyComponent={
+          !loading ? <AppText>Chưa có match nào.</AppText> : null
+        }
         renderItem={({ item }: any) => {
           const r = item.route;
           const d = item.driver;
 
           const status = String(item.match_trip_status || "").toUpperCase();
-          const canReview = status === "FINISHED" && !reviewedSetRef.current.has(Number(item.match_id));
+          const canReview =
+            status === "FINISHED" &&
+            !reviewedSetRef.current.has(Number(item.match_id));
 
           return (
             <View style={stylesP.card}>
               <AppText style={stylesP.cardTitle}>Match #{item.match_id}</AppText>
 
-              <AppText style={stylesP.line}>Tài xế: {d?.user_name ?? "-"}</AppText>
+              <AppText style={stylesP.line}>
+                Tài xế: {d?.user_name ?? "-"}
+              </AppText>
               <AppText style={stylesP.line}>SĐT: {d?.phone ?? "-"}</AppText>
               <AppText style={stylesP.line}>Rating: {d?.rating ?? "-"}</AppText>
 
@@ -255,10 +505,15 @@ function PassengerMatchesView({ passengerId }: { passengerId: number }) {
               </AppText>
               <AppText style={stylesP.line}>Thời gian: {r?.time ?? "-"}</AppText>
 
-              <AppText style={stylesP.badge}>Status: {item.match_trip_status}</AppText>
+              <AppText style={stylesP.badge}>
+                Status: {item.match_trip_status}
+              </AppText>
 
               {canReview ? (
-                <Pressable style={stylesP.reviewBtn} onPress={() => openReview(item)}>
+                <Pressable
+                  style={stylesP.reviewBtn}
+                  onPress={() => openReview(item)}
+                >
                   <AppText style={stylesP.reviewText}>Đánh giá tài xế</AppText>
                 </Pressable>
               ) : null}
@@ -290,10 +545,246 @@ function PassengerMatchesView({ passengerId }: { passengerId: number }) {
 
 /** =========================
  * Driver View: ACCEPTED (API) + FINISHED (API)
- * ✅ Có thể xem đánh giá (demo: fetchByDriver)
+ * ✅ Có map phía trên "Đăng tuyến xe"
  ========================= */
 function DriverMatchesView({ driverId }: { driverId: number }) {
   const [tab, setTab] = React.useState<"ACCEPTED" | "FINISHED">("ACCEPTED");
+
+  // ===== MAP STATE (shared into CreateRouteBox) =====
+  const [locDenied, setLocDenied] = React.useState(false);
+
+  const [startLocation, setStartLocation] = React.useState("");
+  const [endLocation, setEndLocation] = React.useState("");
+
+  const [start, setStart] = React.useState<LatLng | null>(null);
+  const [end, setEnd] = React.useState<LatLng | null>(null);
+
+  const [picking, setPicking] = React.useState<"start" | "end">("start");
+  const [focused, setFocused] = React.useState<"start" | "end" | null>(null);
+
+  const [region, setRegion] = React.useState<Region>(FALLBACK_REGION);
+
+  const [startSug, setStartSug] = React.useState<PlaceSuggestion[]>([]);
+  const [endSug, setEndSug] = React.useState<PlaceSuggestion[]>([]);
+  const [sugLoading, setSugLoading] = React.useState(false);
+
+  const startTextDebounced = useDebouncedValue(startLocation, 500);
+  const endTextDebounced = useDebouncedValue(endLocation, 500);
+
+  const [routeLine, setRouteLine] = React.useState<
+    { latitude: number; longitude: number }[]
+  >([]);
+  const [routeLoading, setRouteLoading] = React.useState(false);
+
+  const fetchRouteLine = React.useCallback(async (a: LatLng, b: LatLng) => {
+    setRouteLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/map/route`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ points: [a, b] }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setRouteLine([]);
+        return;
+      }
+
+      const pts = (data.points ?? [])
+        .map((p: any) => ({
+          latitude: Number(p.lat),
+          longitude: Number(p.lng),
+        }))
+        .filter(
+          (x: any) => Number.isFinite(x.latitude) && Number.isFinite(x.longitude)
+        );
+
+      setRouteLine(pts);
+    } catch {
+      setRouteLine([]);
+    } finally {
+      setRouteLoading(false);
+    }
+  }, []);
+
+  // 1) init location -> set start
+  React.useEffect(() => {
+    (async () => {
+      if (Platform.OS === "web") return;
+
+      const perm = await ensureLocationPermission();
+      if (!perm.ok) {
+        setLocDenied(true);
+        if (!perm.canAskAgain) {
+          Alert.alert(
+            "Cần bật quyền vị trí",
+            "Bạn đã tắt quyền Location. Hãy vào Cài đặt để bật lại.",
+            [
+              { text: "Huỷ", style: "cancel" },
+              { text: "Mở Cài đặt", onPress: () => Linking.openSettings() },
+            ]
+          );
+        }
+        return;
+      }
+
+      setLocDenied(false);
+
+      try {
+        const me = await getMyLocation();
+        if (!me) return;
+
+        setRegion((prev) => ({
+          ...prev,
+          latitude: me.lat,
+          longitude: me.lng,
+        }));
+        setStart(me);
+
+        const addr = await reverseToText(me);
+        setStartLocation(addr);
+      } catch { }
+    })();
+  }, []);
+
+  // 2) typing -> update pins + region
+  React.useEffect(() => {
+    (async () => {
+      if (Platform.OS === "web") return;
+      const q = startTextDebounced.trim();
+      if (!q) return;
+
+      const p = await forwardGeocode(q);
+      if (!p) return;
+
+      setStart(p);
+      setRegion((prev) => ({
+        ...prev,
+        latitude: p.lat,
+        longitude: p.lng,
+      }));
+    })();
+  }, [startTextDebounced]);
+
+  React.useEffect(() => {
+    (async () => {
+      if (Platform.OS === "web") return;
+      const q = endTextDebounced.trim();
+      if (!q) return;
+
+      const p = await forwardGeocode(q);
+      if (!p) return;
+
+      setEnd(p);
+      setRegion((prev) => ({
+        ...prev,
+        latitude: p.lat,
+        longitude: p.lng,
+      }));
+    })();
+  }, [endTextDebounced]);
+
+  // 3) auto draw line when has start & end
+  React.useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    if (!start || !end) {
+      setRouteLine([]);
+      return;
+    }
+
+    fetchRouteLine(start, end);
+  }, [start?.lat, start?.lng, end?.lat, end?.lng, fetchRouteLine]);
+
+  // 4) Autocomplete suggestions
+  React.useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    const active = focused;
+    const query =
+      active === "start"
+        ? startTextDebounced
+        : active === "end"
+          ? endTextDebounced
+          : "";
+    const trimmed = (query ?? "").trim();
+
+    if (!active || trimmed.length < 2) {
+      if (active === "start") setStartSug([]);
+      if (active === "end") setEndSug([]);
+      setSugLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setSugLoading(true);
+
+    (async () => {
+      try {
+        const list = await fetchPlaceSuggestions(trimmed, controller.signal);
+
+        if (isLatLngText(trimmed)) {
+          if (active === "start") setStartSug([]);
+          else setEndSug([]);
+          return;
+        }
+
+        if (active === "start") setStartSug(list);
+        else setEndSug(list);
+      } catch {
+      } finally {
+        setSugLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [focused, startTextDebounced, endTextDebounced]);
+
+  const onPickFromMap = React.useCallback(
+    async (p: LatLng) => {
+      setRegion((prev) => ({
+        ...prev,
+        latitude: p.lat,
+        longitude: p.lng,
+      }));
+
+      if (picking === "start") {
+        setStart(p);
+        setStartLocation(await reverseToText(p));
+        setStartSug([]);
+      } else {
+        setEnd(p);
+        setEndLocation(await reverseToText(p));
+        setEndSug([]);
+      }
+    },
+    [picking]
+  );
+
+  const applySuggestion = async (which: "start" | "end", s: PlaceSuggestion) => {
+    const p = { lat: s.lat, lng: s.lng };
+
+    setRegion((prev) => ({
+      ...prev,
+      latitude: p.lat,
+      longitude: p.lng,
+    }));
+
+    if (which === "start") {
+      setPicking("start");
+      setFocused(null);
+      setStart(p);
+      setStartLocation(s.label);
+      setStartSug([]);
+    } else {
+      setPicking("end");
+      setFocused(null);
+      setEnd(p);
+      setEndLocation(s.label);
+      setEndSug([]);
+    }
+  };
 
   const {
     data: acceptedData,
@@ -340,17 +831,22 @@ function DriverMatchesView({ driverId }: { driverId: number }) {
       }
       Alert.alert(
         "Đánh giá mới nhất",
-        `⭐ ${top.rating}/5\n${top.comment || "(Không có nhận xét)"}\n${top.created_at || ""}`
+        `⭐ ${top.rating}/5\n${top.comment || "(Không có nhận xét)"}\n${top.created_at || ""
+        }`
       );
     } catch (e: any) {
       Alert.alert("Lỗi", e?.message ?? "Không tải được review");
     }
   };
 
-  const listData = tab === "ACCEPTED" ? (acceptedData ?? []) : (finishedData ?? []);
+  const listData =
+    tab === "ACCEPTED" ? (acceptedData ?? []) : (finishedData ?? []);
   const loading = tab === "ACCEPTED" ? acceptedLoading : finishedLoading;
   const error = tab === "ACCEPTED" ? acceptedError : finishedError;
   const onRefresh = tab === "ACCEPTED" ? refetchAccepted : refetchFinished;
+
+  const showStartSug = focused === "start" && (startSug.length > 0 || sugLoading);
+  const showEndSug = focused === "end" && (endSug.length > 0 || sugLoading);
 
   return (
     <Screen>
@@ -364,24 +860,94 @@ function DriverMatchesView({ driverId }: { driverId: number }) {
           <>
             <View style={styles.header}>
               <AppText style={styles.h1}>Matches (Driver)</AppText>
+              <AppText style={styles.sub}>
+                Chạm map hoặc nhập địa chỉ để chọn điểm
+              </AppText>
             </View>
 
             <Divider />
 
+            {/* ===== MAP BLOCK (nằm trên "Đăng tuyến xe") ===== */}
+            <View style={styles.mapWrap}>
+              {Platform.OS === "web" ? (
+                <View style={styles.webMapFallback}>
+                  <AppText style={styles.webMapTitle}>Map (Web fallback)</AppText>
+                  <AppText style={styles.webMapSub}>
+                    Web không hỗ trợ react-native-maps.
+                  </AppText>
+                  <View style={{ height: 10 }} />
+                  <AppText style={styles.webMapCoord}>
+                    Start: {start ? fmtLatLng(start) : "-"}
+                  </AppText>
+                  <AppText style={styles.webMapCoord}>
+                    End: {end ? fmtLatLng(end) : "-"}
+                  </AppText>
+                  {routeLoading ? (
+                    <AppText style={{ marginTop: 8, fontWeight: "800" }}>
+                      Đang vẽ đường…
+                    </AppText>
+                  ) : null}
+                </View>
+              ) : (
+                <NativeMap
+                  region={region}
+                  start={start}
+                  end={end}
+                  onPick={onPickFromMap}
+                  routeLine={routeLine}
+                />
+              )}
+            </View>
+
+            {locDenied ? (
+              <AppText style={styles.locWarn}>
+                Bạn đang tắt quyền Location. Vẫn chọn điểm được nhưng không tự định vị.
+              </AppText>
+            ) : null}
+
+            {routeLoading ? (
+              <AppText style={{ marginTop: 8, fontWeight: "800", opacity: 0.8 }}>
+                Đang vẽ đường đi…
+              </AppText>
+            ) : null}
+
+
+            {/* ===== Create Route Box (nhận start/end từ map) ===== */}
             <CreateRouteBox
               driverId={driverId}
+              startLocation={startLocation}
+              endLocation={endLocation}
+              setStartLocation={setStartLocation}
+              setEndLocation={setEndLocation}
               onCreated={async () => {
                 await refetchAccepted();
               }}
             />
 
             <View style={styles.tabsRow}>
-              <Pressable onPress={() => setTab("ACCEPTED")} style={[styles.tabBtn, tab === "ACCEPTED" && styles.tabBtnActive]}>
-                <AppText style={[styles.tabText, tab === "ACCEPTED" && styles.tabTextActive]}>Đang chạy</AppText>
+              <Pressable
+                onPress={() => setTab("ACCEPTED")}
+                style={[styles.tabBtn, tab === "ACCEPTED" && styles.tabBtnActive]}
+              >
+                <AppText
+                  style={[styles.tabText, tab === "ACCEPTED" && styles.tabTextActive]}
+                >
+                  Đang chạy
+                </AppText>
               </Pressable>
 
-              <Pressable onPress={() => setTab("FINISHED")} style={[styles.tabBtn, tab === "FINISHED" && styles.tabBtnActive]}>
-                <AppText style={[styles.tabText, tab === "FINISHED" && styles.tabTextActive]}>Đã xong</AppText>
+              <Pressable
+                onPress={() => setTab("FINISHED")}
+                style={[styles.tabBtn, tab === "FINISHED" && styles.tabBtnActive]}
+              >
+                <AppText
+                  style={[
+                    styles.tabText,
+                    tab === "FINISHED" && styles.tabTextActive,
+                  ]}
+                >
+                  Đã xong
+                </AppText>
               </Pressable>
             </View>
 
@@ -393,10 +959,16 @@ function DriverMatchesView({ driverId }: { driverId: number }) {
             <Divider />
 
             <AppText style={styles.h2}>
-              {tab === "ACCEPTED" ? "Danh sách chuyến đã match (ACCEPTED)" : "Danh sách chuyến đã hoàn thành (FINISHED)"}
+              {tab === "ACCEPTED"
+                ? "Danh sách chuyến đã match (ACCEPTED)"
+                : "Danh sách chuyến đã hoàn thành (FINISHED)"}
             </AppText>
 
-            {error ? <AppText style={styles.err}>Lỗi: {String((error as any)?.message ?? error)}</AppText> : null}
+            {error ? (
+              <AppText style={styles.err}>
+                Lỗi: {String((error as any)?.message ?? error)}
+              </AppText>
+            ) : null}
 
             <View style={{ height: 12 }} />
           </>
@@ -426,12 +998,17 @@ function DriverMatchesView({ driverId }: { driverId: number }) {
               </AppText>
               <AppText style={styles.line}>Giờ khách: {rr.time}</AppText>
               <AppText style={styles.line}>Số chỗ khách đặt: {rr.passengers}</AppText>
-              <AppText style={styles.line}>RideRequest status: {rr.ride_request_status}</AppText>
+              <AppText style={styles.line}>
+                RideRequest status: {rr.ride_request_status}
+              </AppText>
 
               <AppText style={styles.badge}>Match status: {item.match_trip_status}</AppText>
 
               {tab === "ACCEPTED" ? (
-                <Pressable style={styles.finishBtn} onPress={() => onFinish(item.match_id)}>
+                <Pressable
+                  style={styles.finishBtn}
+                  onPress={() => onFinish(item.match_id)}
+                >
                   <AppText style={styles.finishText}>Kết thúc chuyến đi</AppText>
                 </Pressable>
               ) : null}
@@ -480,7 +1057,9 @@ function ReviewModal({
               <View style={stylesM.ratingRow}>
                 {[1, 2, 3, 4, 5].map((n) => (
                   <Pressable key={n} onPress={() => setRating(n)} disabled={submitting}>
-                    <AppText style={[stylesM.star, rating >= n && stylesM.starActive]}>★</AppText>
+                    <AppText style={[stylesM.star, rating >= n && stylesM.starActive]}>
+                      ★
+                    </AppText>
                   </Pressable>
                 ))}
               </View>
@@ -499,8 +1078,14 @@ function ReviewModal({
                   <AppText style={{ fontWeight: "800" }}>Huỷ</AppText>
                 </Pressable>
 
-                <Pressable onPress={onSubmit} style={[stylesM.submit, submitting && { opacity: 0.6 }]} disabled={submitting}>
-                  <AppText style={{ fontWeight: "900" }}>{submitting ? "Đang gửi..." : "Gửi"}</AppText>
+                <Pressable
+                  onPress={onSubmit}
+                  style={[stylesM.submit, submitting && { opacity: 0.6 }]}
+                  disabled={submitting}
+                >
+                  <AppText style={{ fontWeight: "900" }}>
+                    {submitting ? "Đang gửi..." : "Gửi"}
+                  </AppText>
                 </Pressable>
               </View>
             </View>
@@ -512,24 +1097,32 @@ function ReviewModal({
 }
 
 /** =========================
- * Create Route Box (giữ nguyên)
+ * Create Route Box (đã nhận start/end từ map)
  ========================= */
 function CreateRouteBox({
   driverId,
   onCreated,
+  startLocation,
+  endLocation,
+  setStartLocation,
+  setEndLocation,
 }: {
   driverId: number;
   onCreated: () => Promise<void> | void;
+  startLocation: string;
+  endLocation: string;
+  setStartLocation: (v: string) => void;
+  setEndLocation: (v: string) => void;
 }) {
   const [loading, setLoading] = React.useState(false);
 
-  const [startLocation, setStartLocation] = React.useState("");
-  const [endLocation, setEndLocation] = React.useState("");
   const [time, setTime] = React.useState("");
   const [seats, setSeats] = React.useState("");
   const [priceRaw, setPriceRaw] = React.useState("");
 
   const reset = () => {
+    // nếu bạn muốn sau khi đăng tuyến xong vẫn giữ điểm trên map,
+    // hãy comment 2 dòng dưới
     setStartLocation("");
     setEndLocation("");
     setTime("");
@@ -581,9 +1174,27 @@ function CreateRouteBox({
       <AppText style={styles.h2}>Đăng tuyến xe</AppText>
 
       <View style={{ gap: 10 }}>
-        <TextInput value={startLocation} onChangeText={setStartLocation} placeholder="Điểm đi (start_location)" style={styles.input} placeholderTextColor="#9ca3af" />
-        <TextInput value={endLocation} onChangeText={setEndLocation} placeholder="Điểm đến (end_location)" style={styles.input} placeholderTextColor="#9ca3af" />
-        <TextInput value={time} onChangeText={setTime} placeholder="Thời gian (vd 2025-01-10 08:00)" style={styles.input} placeholderTextColor="#9ca3af" />
+        <TextInput
+          value={startLocation}
+          onChangeText={setStartLocation}
+          placeholder="Điểm đi (start_location)"
+          style={styles.input}
+          placeholderTextColor="#9ca3af"
+        />
+        <TextInput
+          value={endLocation}
+          onChangeText={setEndLocation}
+          placeholder="Điểm đến (end_location)"
+          style={styles.input}
+          placeholderTextColor="#9ca3af"
+        />
+        <TextInput
+          value={time}
+          onChangeText={setTime}
+          placeholder="Thời gian (vd 2025-01-10 08:00)"
+          style={styles.input}
+          placeholderTextColor="#9ca3af"
+        />
 
         <View style={{ flexDirection: "row", gap: 10 }}>
           <TextInput
@@ -605,7 +1216,11 @@ function CreateRouteBox({
           />
         </View>
 
-        <Pressable onPress={submit} disabled={loading} style={[styles.btn, loading && { opacity: 0.6 }]}>
+        <Pressable
+          onPress={submit}
+          disabled={loading}
+          style={[styles.btn, loading && { opacity: 0.6 }]}
+        >
           <AppText style={styles.btnText}>{loading ? "Đang đăng..." : "Đăng tuyến"}</AppText>
         </Pressable>
       </View>
@@ -628,6 +1243,61 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
+  // ===== map styles =====
+  locWarn: { marginTop: 6, color: "crimson", fontWeight: "700" },
+
+  mapWrap: {
+    height: 240,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    marginTop: 8,
+  },
+
+  webMapFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 14,
+  },
+  webMapTitle: { fontSize: 18, fontWeight: "900" },
+  webMapSub: { marginTop: 6, opacity: 0.7, textAlign: "center" },
+  webMapCoord: { marginTop: 4, fontWeight: "800" },
+
+  pickRow: { marginTop: 12, flexDirection: "row", gap: 10 },
+  pickBtn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  pickBtnActive: {
+    backgroundColor: "#111",
+    borderColor: "#111",
+  },
+  pickText: { fontWeight: "800", color: "#111" },
+  pickTextActive: { color: "#fff" },
+
+  // suggestions dropdown
+  sugBox: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  sugHint: { padding: 10, opacity: 0.7, fontWeight: "700" },
+  sugItem: { paddingHorizontal: 12, paddingVertical: 10 },
+  sugText: { fontSize: 13, fontWeight: "700", opacity: 0.9 },
+  sugSep: { height: 1, backgroundColor: "#f3f4f6" },
+
+  // ===== existing styles =====
   createBox: {
     marginTop: 12,
     padding: 12,
@@ -644,9 +1314,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    backgroundColor: "#fff",
   },
 
-  btn: { paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: "#111", alignItems: "center" },
+  btn: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#111",
+    alignItems: "center",
+  },
   btnText: { fontWeight: "800" },
 
   tabsRow: { flexDirection: "row", gap: 10, marginTop: 12 },
@@ -662,7 +1339,14 @@ const styles = StyleSheet.create({
   tabText: { fontWeight: "800", opacity: 0.6 },
   tabTextActive: { opacity: 1 },
 
-  card: { padding: 14, borderRadius: 14, borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#fff", gap: 6 },
+  card: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    gap: 6,
+  },
   cardTitle: { fontSize: 15, fontWeight: "900" },
   line: { fontSize: 13, opacity: 0.9 },
   badge: { marginTop: 6, fontSize: 12, opacity: 0.85, fontWeight: "900" },
@@ -740,6 +1424,7 @@ const stylesM = StyleSheet.create({
     padding: 10,
     minHeight: 90,
     textAlignVertical: "top",
+    backgroundColor: "#fff",
   },
   row: {
     flexDirection: "row",
